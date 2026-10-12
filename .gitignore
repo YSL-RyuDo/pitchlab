@@ -1,0 +1,9 @@
+build/
+Recordings/
+*.user
+*.pdb
+*.ilk
+*.exe
+*.lib
+*.exp
+ThirdParty/*-source.zip

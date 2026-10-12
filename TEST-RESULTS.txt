@@ -1,0 +1,35 @@
+  detection 44100 Hz: 82.41 -> 82.4105 (0.010744 cents)
+  detection 44100 Hz: 146.83 -> 146.833 (0.0340995 cents)
+  detection 44100 Hz: 220 -> 220.01 (0.0753621 cents)
+  detection 44100 Hz: 432 -> 432.085 (0.338633 cents)
+  detection 44100 Hz: 880 -> 880.715 (1.40524 cents)
+  crossings 439.916 detected 432.081 correction 0.314415
+  end-to-end 432 -> 440.002 target 440, DSP 4.6406% realtime, latency 59.5011 ms
+  crossings 439.924 detected 452.078 correction -0.468819
+  end-to-end 452 -> 440.014 target 440, DSP 4.76954% realtime, latency 59.5011 ms
+  crossings 207.649 detected 213.003 correction -0.44047
+  end-to-end 213 -> 207.659 target 207.652, DSP 4.58806% realtime, latency 59.5011 ms
+  detection 48000 Hz: 82.41 -> 82.4109 (0.0183516 cents)
+  detection 48000 Hz: 146.83 -> 146.831 (0.0127557 cents)
+  detection 48000 Hz: 220 -> 220.009 (0.0725547 cents)
+  detection 48000 Hz: 432 -> 432.025 (0.101489 cents)
+  detection 48000 Hz: 880 -> 880.553 (1.08705 cents)
+  crossings 439.973 detected 432.025 correction 0.316557
+  end-to-end 432 -> 440 target 440, DSP 5.772% realtime, latency 54.6667 ms
+  crossings 439.923 detected 452.079 correction -0.469031
+  end-to-end 452 -> 439.952 target 440, DSP 5.82452% realtime, latency 54.6667 ms
+  crossings 207.647 detected 213.005 correction -0.440644
+  end-to-end 213 -> 207.653 target 207.652, DSP 5.81516% realtime, latency 54.6667 ms
+ALL DSP TESTS PASSED
+segment 0: 207.653 Hz, error 0.00298371 cents
+segment 1: 439.999 Hz, error -0.00539627 cents
+segment 2: 439.949 Hz, error -0.201381 cents
+PASS 24-bit mono WAV x 2, 48000 Hz, 144000 samples each; actual saved audio is pitch-corrected
+take_20261013_001645_4386766_tuned.wav
+take_20261013_001645_4386766_original.wav
+PASS repeated start/stop at a changed sample rate
+
+Delivered executable SHA256: 1176076A9102C154F31F5A574C0ACED48E649AF5F9F411B9AF0E897F5CCCAC3F
+Source archive rebuild: compilation PASS; execution verification BLOCKED by Windows application control.
+Live microphone listening: NOT tested.
+Final UTF-8 label correction validated by compilation only.
