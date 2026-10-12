@@ -60,12 +60,12 @@ public:
         addAndMakeVisible(key); addAndMakeVisible(scale);
         setupSlider(speed, 0, 150, 1, 12, " ms", juce::String::fromUTF8("보정 속도"));
         setupSlider(amount, 0, 100, 1, 100, "%", juce::String::fromUTF8("보정 강도"));
-        setupSlider(volume, -30, 6, 1, -6, " dB", juce::String::fromUTF8("출력 음량"));
+        setupSlider(volume, -60, -18, 1, -36, " dB", juce::String::fromUTF8("헤드폰 음량"));
         key.onChange = [this] { audio.pitch.parameters.key = key.getSelectedId() - 1; };
         scale.onChange = [this] { audio.pitch.parameters.scale = scale.getSelectedId() - 1; };
         speed.onValueChange = [this] { audio.pitch.parameters.retuneMs = float(speed.getValue()); };
         amount.onValueChange = [this] { audio.pitch.parameters.amount = float(amount.getValue() / 100); };
-        volume.onValueChange = [this] { audio.pitch.parameters.outputDb = float(volume.getValue()); };
+        volume.onValueChange = [this] { audio.monitorDb = float(volume.getValue()); };
         monitor.onClick = [this] { audio.monitoring = monitor.getToggleState(); };
         bypass.onClick = [this] { audio.pitch.parameters.enabled = bypass.getToggleState(); };
         formants.onClick = [this] { audio.pitch.parameters.preserveFormants = formants.getToggleState(); };
@@ -89,7 +89,7 @@ public:
         speed.setTooltip(juce::String::fromUTF8("숫자가 작을수록 목표 음에 빨리 붙습니다. 0–15 ms: 강한 효과, 50–100 ms: 부드러운 보정."));
         monitor.setTooltip(juce::String::fromUTF8("유선 헤드폰을 연결한 뒤 켜 주세요. 녹음은 듣기 설정과 관계없이 저장됩니다."));
         bypass.setTooltip(juce::String::fromUTF8("끄면 보정하지 않은 소리를 출력합니다. 전환은 부드럽게 이어집니다."));
-        recordButton.setEnabled(false);
+        recordButton.setEnabled(false); monitor.setEnabled(false);
         historyInput.fill(-1); historyTarget.fill(-1);
         status = juce::String::fromUTF8("유선 헤드폰을 연결하고 ‘마이크 시작’을 눌러 주세요.");
         startTimerHz(30);
@@ -150,9 +150,9 @@ public:
         text(g, recording ? juce::String::fromUTF8("●  REC  ") + timeString(sec) : lastTake.isNotEmpty() ? "SAVED  " + timeString(lastSeconds) : "READY TO RECORD", 260, 608, 350, 25, 16,
             recording ? theme::red : theme::text, true);
         text(g, recording ? juce::String::fromUTF8("보정음 + 원본을 함께 저장 중") : juce::String::fromUTF8("WAV · 24-bit · 원본도 별도로 저장"), 260, 640, 350, 20, 11, theme::muted);
-        text(g, juce::String::fromUTF8("출력 음량"), 642, 655, 83, 27, 12, theme::muted);
+        text(g, juce::String::fromUTF8("헤드폰 음량"), 642, 655, 83, 27, 12, theme::muted);
         text(g, status, 29, 719, 810, 27, 12, statusError ? theme::red : theme::muted);
-        text(g, "STUDY BUILD 0.1", 830, 721, 142, 22, 10, theme::muted, false, juce::Justification::right);
+        text(g, "STUDY BUILD 0.1.1", 830, 721, 142, 22, 10, theme::muted, false, juce::Justification::right);
     }
 private:
     theme::Look look;
@@ -221,6 +221,7 @@ private:
     }
     void showError(const juce::String& error) { status = error; statusError = true; repaint(); }
     void toggleAudio() {
+        monitor.setToggleState(false, juce::dontSendNotification); audio.monitoring = false;
         if (running) {
             if (recording) finishRecording();
             audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false);
@@ -234,6 +235,7 @@ private:
             status = juce::String::fromUTF8("노래해 보세요. 헤드폰을 연결했다면 ‘헤드폰으로 듣기’를 켜 주세요."); statusError = false;
             updateDeviceDescription();
         }
+        monitor.setEnabled(running);
         repaint();
     }
     void updateDeviceDescription() {
@@ -268,12 +270,16 @@ private:
         deviceWindow = options.launchAsync();
     }
     void timerCallback() override {
-        if (running && audio.deviceStopped.load()) {
+        if (running && (audio.deviceStopped.load() || audio.streamFault.load() != 0)) {
+            const int fault = audio.streamFault.load();
             if (recording) finishRecording();
             audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false); deviceButton.setEnabled(true);
-            showError(juce::String::fromUTF8("오디오 장치 연결이 끊겼어요. 장치를 확인하고 다시 시작해 주세요."));
+            monitor.setToggleState(false, juce::dontSendNotification); monitor.setEnabled(false);
+            showError(fault != 0 ? juce::String::fromUTF8("오디오 처리 이상으로 출력을 차단하고 녹음을 멈췄어요. 오류 ") + juce::String(fault)
+                                : juce::String::fromUTF8("오디오 장치 연결이 끊겼어요. 장치를 확인하고 다시 시작해 주세요."));
         }
         if (recording && audio.recorder.hasFailed()) finishRecording();
+        if (!audio.monitoring.load()) monitor.setToggleState(false, juce::dontSendNotification);
         if (recording && audio.recorder.seconds() >= 3600) { finishRecording(); status = juce::String::fromUTF8("1시간 녹음을 저장했어요. 새 녹음을 시작할 수 있어요."); }
         const float hz = audio.pitch.detectedHz.load();
         historyInput[historyPos] = running && hz > 0 ? float(pitchlab::midiFromHz(hz)) : -1;
@@ -287,11 +293,71 @@ private:
     }
 };
 
+// Exercise the actual callback and DSP worker with memory-only buffers.
+int runStreamTests(std::ostream& log) {
+    try {
+        AudioEngine engine;
+        std::vector<float> input(32768), left(32768), right(32768);
+        const float* ins[] = {input.data()}; float* outs[] = {left.data(), right.data()};
+        juce::AudioIODeviceCallbackContext context;
+        for (double rate : {44100., 48000.}) {
+            engine.prepareStream(rate, 512);
+            require(engine.ready.load() && !engine.monitoring.load(), "stream starts with monitor off");
+            engine.monitoring = true; engine.monitorDb = -18;
+            int supplied = 0, consumed = 0;
+            auto feed = [&](int count, bool consume) {
+                for (int i = 0; i < count; ++i)
+                    input[size_t(i)] = float(0.8 * std::sin(2 * pitchlab::pi * 432 * (supplied + i) / rate));
+                engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, count, context);
+                supplied += count; if (consume) consumed += count;
+                const int expectedReady = supplied / 512 * 512 - consumed;
+                const auto deadline = juce::Time::getMillisecondCounter() + 2000;
+                while (engine.bufferedOutputSamples() < expectedReady && engine.streamFault.load() == 0
+                       && juce::Time::getMillisecondCounter() < deadline) juce::Thread::sleep(1);
+                require(engine.streamFault.load() == 0 && engine.bufferedOutputSamples() >= expectedReady, "DSP worker drains capture FIFO");
+                for (int i = 0; i < count; ++i)
+                    require(std::isfinite(left[size_t(i)]) && std::abs(left[size_t(i)]) <= 0.030001f
+                            && left[size_t(i)] == right[size_t(i)], "callback output finite, bounded and stereo matched");
+            };
+            for (int i = 0; i < 4; ++i) feed(512, false);
+            float peak = 0;
+            for (int i = 0; i < 200; ++i) {
+                const int sizes[] = {128, 257, 512, 1024}; const int count = sizes[i % 4];
+                feed(count, true);
+                for (int j = 0; j < count; ++j) peak = std::max(peak, std::abs(left[size_t(j)]));
+            }
+            require(peak > 0.001f, "callback passes processed audio");
+            std::fill(left.begin(), left.end(), 1.0f);
+            engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, 8192, context);
+            require(engine.streamFault.load() == 2 && !engine.monitoring.load(), "underrun latches mute");
+            for (int i = 0; i < 8192; ++i) require(left[size_t(i)] == 0 && right[size_t(i)] == 0, "underrun emits silence");
+            engine.monitoring = true;
+            engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, 512, context);
+            for (int i = 0; i < 512; ++i) require(left[size_t(i)] == 0, "monitor toggle cannot bypass stream fault");
+            engine.stop();
+        }
+        engine.prepareStream(48000, 512); engine.monitoring = true;
+        engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, 32768, context);
+        require(engine.streamFault.load() == 1 && !engine.monitoring.load(), "oversized capture latches mute");
+        for (float x : left) require(x == 0, "capture overflow emits silence");
+        engine.prepareStream(48000, 512); engine.monitoring = true;
+        input[7] = std::numeric_limits<float>::quiet_NaN();
+        engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, 512, context);
+        require(engine.streamFault.load() == 3 && !engine.monitoring.load(), "invalid device input latches mute");
+        for (int i = 0; i < 512; ++i) require(left[size_t(i)] == 0, "invalid input emits silence");
+        engine.stop();
+        log << "PASS actual callback/worker: variable blocks, FIFO wrap, 44.1/48 kHz, restart, underrun, overflow, NaN and latched silence (no audio device opened)\n";
+        return 0;
+    } catch (const std::exception& e) { log << "FAIL stream: " << e.what() << '\n'; return 10; }
+}
+
 // End-to-end recorder verification uses generated audio and never opens a mic.
 int runSelfTest(const juce::File& folder) {
+    juce::ScopedNoDenormals noDenormals;
     std::ofstream log(folder.getChildFile("integration-test.txt").getFullPathName().toStdString());
     if (!log) return 2;
     if (runDspTests(log) != 0) return 9;
+    if (runStreamTests(log) != 0) return 10;
     AudioEngine engine; engine.pitch.prepare(48000); engine.pitch.parameters.retuneMs = 0;
     auto error = engine.recorder.start(folder, 48000);
     if (error.isNotEmpty()) { log << error << '\n'; return 3; }
@@ -342,7 +408,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.1.0"; }
+    const juce::String getApplicationVersion() override { return "0.1.1"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if (args.size() >= 2 && args[0] == "--self-test") {

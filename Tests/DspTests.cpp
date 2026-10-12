@@ -4,6 +4,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <fstream>
+#include <limits>
 
 void require(bool value, const char* description) {
     if (!value) throw std::runtime_error(description);
@@ -15,6 +16,44 @@ double estimate(const std::vector<float>& data, double rate) {
 }
 int runDspTests(std::ostream& output) {
     try {
+        for (double rate : {44100., 48000., 96000.}) {
+            pitchlab::LookAheadLimiter limiter; limiter.prepare(rate, 0.5f);
+            const int delay = limiter.latencySamples();
+            for (int i = 0; i <= delay; ++i) {
+                float y = limiter.process(i == 0 ? 10.0f : 0.0f);
+                require(i == delay ? std::abs(y - 0.5f) < 1e-6f : y == 0, "lookahead catches impulse at exact delay");
+            }
+            std::mt19937 rng(73); std::uniform_real_distribution<float> stress(-100, 100);
+            for (int i = 0; i < int(rate * 2); ++i) {
+                float y = limiter.process(stress(rng));
+                require(std::isfinite(y) && std::abs(y) <= 0.500001f, "lookahead ceiling under random overload");
+            }
+            limiter.reset();
+            for (int i = 0; i < int(rate); ++i) {
+                float y = limiter.process(2);
+                require(std::isfinite(y) && y <= 0.500001f, "DC overload bounded");
+            }
+            pitchlab::HeadphoneGuard guard; guard.prepare(rate);
+            for (int i = 0; i < 2000; ++i) require(guard.process(1, false, -18) == 0, "monitor off is silent");
+            float peak = 0;
+            for (int i = 0; i < int(rate); ++i) {
+                float y = guard.process(1, true, -18);
+                require(std::isfinite(y) && std::abs(y) <= 0.030001f, "headphone output ceiling");
+                if (i < delay) require(y == 0, "headphone enable begins silent");
+                if (i == delay) require(y < 0.0001f, "headphone fade starts gently");
+                peak = std::max(peak, y);
+            }
+            require(peak > 0.029f, "guard passes attenuated audio");
+            require(guard.process(1, false, -18) == 0, "disable mutes immediately");
+            for (int i = 0; i < delay; ++i) require(guard.process(1, true, -18) == 0, "re-enable clears delayed audio");
+            require(guard.process(std::numeric_limits<float>::quiet_NaN(), true, -18) == 0 && guard.fault, "NaN latches mute");
+            require(guard.process(0.5f, true, -18) == 0, "fault never resumes automatically");
+            guard.prepare(rate);
+            require(guard.process(std::numeric_limits<float>::infinity(), true, -18) == 0 && guard.fault, "infinity latches mute");
+            guard.prepare(rate);
+            require(guard.process(5, true, -18) == 0 && guard.fault, "invalid level latches mute");
+        }
+        output << "PASS lookahead impulse, overload, headphone ceiling/fade/mute/fault latch at 44.1/48/96 kHz\n";
         require(pitchlab::nearestNote(60.8, 0, 1) == 60, "C major excludes C sharp");
         require(pitchlab::nearestNote(61.7, 0, 1) == 62, "C major selects D");
         require(pitchlab::nearestNote(68.8, 9, 2) == 69, "A minor selects A");
@@ -65,7 +104,7 @@ int runDspTests(std::ostream& output) {
                 require(std::isfinite(cents) && std::abs(cents) < 12, "corrected output within 12 cents of target");
                 require(elapsed < 1.2, "processing faster than real time");
                 require(result.size() == size_t(length), "processing preserves sample count");
-                for (float x : result) if (!std::isfinite(x) || std::abs(x) > 0.981f) throw std::runtime_error("invalid output sample");
+                for (float x : result) if (!std::isfinite(x) || std::abs(x) > 0.500001f) throw std::runtime_error("invalid output sample");
             }
         }
         pitchlab::PitchEngine bypass; bypass.prepare(48000); bypass.parameters.enabled = false; bypass.parameters.outputDb = 0;

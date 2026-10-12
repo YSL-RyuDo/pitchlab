@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include "OutputGuard.h"
 
 namespace pitchlab {
 constexpr double pi = 3.14159265358979323846;
@@ -113,13 +114,15 @@ public:
         shiftSize = int(shifter->getBlockSize()); shiftPos = 0;
         shiftInput.assign(size_t(shiftSize), 0); shiftOutput.assign(size_t(shiftSize), 0);
         // The fixed-block adapter adds one block to the shifter's stated delay.
+        outputLimiter.prepare(rate, 0.5f);
         latency = int(shifter->getStartDelay()) + shiftSize;
         dryDelay.assign(size_t(latency + 1), 0);
+        finalDryDelay.assign(size_t(outputLimiter.latencySamples() + 1), 0); finalDryPos = 0;
         dryPos = 0; smoothCorrection = 0; effectMix = 1; gain = 0.501187f;
         lastTarget = -1; lastKey = lastScale = -1; midiHistory.fill(0); validHistory = historyPos = 0;
         detectedHz = 0; targetMidi = -1; correction = inputPeak = outputPeak = 0; clipped = false;
     }
-    int latencySamples() const { return latency; }
+    int latencySamples() const { return latency + outputLimiter.latencySamples(); }
     double sampleRate() const { return rate; }
     // All arrays are caller-owned; dry is delayed to match the wet path.
     void process(const float* input, float* wet, float* dry, int samples) {
@@ -127,7 +130,7 @@ public:
         for (int offset = 0; offset < samples; offset += quantum) {
             int n = std::min(quantum, samples - offset);
             for (int i = 0; i < n; ++i) {
-                float x = std::isfinite(input[offset + i]) ? input[offset + i] : 0;
+                float x = std::isfinite(input[offset + i]) ? std::clamp(input[offset + i], -1.0f, 1.0f) : 0;
                 blockIn[i] = x;
                 inPeak = std::max(inPeak, std::abs(x));
                 if (detector.push(x)) updateTarget();
@@ -154,14 +157,18 @@ public:
                 }
             }
             const float desiredMix = parameters.enabled.load() ? 1.0f : 0.0f;
-            const float desiredGain = std::pow(10.0f, parameters.outputDb.load() / 20.0f);
+            const float requestedDb = parameters.outputDb.load();
+            const float desiredGain = std::isfinite(requestedDb) ? std::pow(10.0f, std::clamp(requestedDb, -60.0f, 0.0f) / 20.0f) : 0;
             const float smooth = float(1.0 - std::exp(-1.0 / (rate * 0.01)));
             for (int i = 0; i < n; ++i) {
                 effectMix += smooth * (desiredMix - effectMix); gain += smooth * (desiredGain - gain);
                 float y = (blockOut[i] * effectMix + dry[offset + i] * (1 - effectMix)) * gain;
                 if (!std::isfinite(y)) y = 0;
                 if (std::abs(y) > 0.98f || std::abs(blockIn[i]) >= 0.999f) clipped = true;
-                wet[offset + i] = std::clamp(y, -0.98f, 0.98f);
+                wet[offset + i] = outputLimiter.process(y);
+                finalDryDelay[finalDryPos] = dry[offset + i];
+                finalDryPos = (finalDryPos + 1) % finalDryDelay.size();
+                dry[offset + i] = finalDryDelay[finalDryPos];
                 outPeak = std::max(outPeak, std::abs(wet[offset + i]));
             }
         }
@@ -171,10 +178,13 @@ private:
     static constexpr int quantum = 128;
     PitchDetector detector;
     std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
+    LookAheadLimiter outputLimiter;
     std::vector<float> shiftInput, shiftOutput;
     int shiftSize = 512, shiftPos = 0;
     std::array<float, quantum> blockIn{}, blockOut{};
     std::vector<float> dryDelay;
+    std::vector<float> finalDryDelay;
+    size_t finalDryPos = 0;
     std::array<double, 3> midiHistory{};
     size_t dryPos = 0;
     int latency = 0, lastTarget = -1, lastKey = -1, lastScale = -1, validHistory = 0, historyPos = 0;
