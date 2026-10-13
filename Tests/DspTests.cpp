@@ -58,6 +58,31 @@ int runDspTests(std::ostream& output) {
         require(pitchlab::nearestNote(61.7, 0, 1) == 62, "C major selects D");
         require(pitchlab::nearestNote(68.8, 9, 2) == 69, "A minor selects A");
         require(pitchlab::allowedNote(63, 0, 2) && !pitchlab::allowedNote(64, 0, 2), "natural minor intervals");
+        require(pitchlab::nearestMaskedNote(68.7, 1 << 9) == 69, "custom A-only scale");
+        require(pitchlab::nearestMaskedNote(60.8, pitchlab::scaleMask(0, 1)) == 60, "custom mask agrees with C major");
+        require(pitchlab::nearestMaskedNote(72.0, 1 << 1) == 73, "custom mask across octave");
+        // On a sustained vibrato note, Humanize should let the original vibrato
+        // through by reducing modulation of the corrective pitch ratio.
+        double correctionRange[2]{};
+        for (int mode = 0; mode < 2; ++mode) {
+            pitchlab::PitchEngine engine; engine.prepare(48000);
+            engine.parameters.retuneMs = 0; engine.parameters.humanize = float(mode);
+            std::array<float, 256> input{}, wet{}, dry{};
+            double phase = 0, lo = 100, hi = -100;
+            for (int offset = 0; offset < 96000; offset += 256) {
+                for (int i = 0; i < 256; ++i) {
+                    const double midi = 68.85 + 0.12 * std::sin(2 * pitchlab::pi * 5 * (offset + i) / 48000);
+                    phase += 2 * pitchlab::pi * pitchlab::hzFromMidi(midi) / 48000;
+                    input[i] = float(0.2 * std::sin(phase) + 0.07 * std::sin(2 * phase));
+                }
+                engine.process(input.data(), wet.data(), dry.data(), 256);
+                if (offset > 48000) { lo = std::min(lo, double(engine.correction.load())); hi = std::max(hi, double(engine.correction.load())); }
+                for (float x : wet) require(std::isfinite(x) && std::abs(x) <= 0.500001f, "vibrato output bounded");
+            }
+            correctionRange[mode] = hi - lo;
+        }
+        require(correctionRange[0] > 0.1 && correctionRange[1] < correctionRange[0] * 0.5, "Humanize preserves sustained vibrato by slowing correction");
+        output << "PASS custom note masks and sustained-vibrato Humanize response: " << correctionRange[0] << " -> " << correctionRange[1] << " semitone correction range\n";
         for (double rate : {44100., 48000.}) {
             for (double frequency : {82.41, 146.83, 220., 432., 880.}) {
                 pitchlab::PitchDetector detector; detector.prepare(rate);

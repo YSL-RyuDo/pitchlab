@@ -1,36 +1,39 @@
 PASS lookahead impulse, overload, headphone ceiling/fade/mute/fault latch at 44.1/48/96 kHz
+PASS custom note masks and sustained-vibrato Humanize response: 0.231881 -> 0.0405159 semitone correction range
   detection 44100 Hz: 82.41 -> 82.4105 (0.010744 cents)
   detection 44100 Hz: 146.83 -> 146.833 (0.0340995 cents)
   detection 44100 Hz: 220 -> 220.01 (0.0753621 cents)
   detection 44100 Hz: 432 -> 432.085 (0.338633 cents)
   detection 44100 Hz: 880 -> 880.715 (1.40524 cents)
   crossings 439.915 detected 432.081 correction 0.314415
-  end-to-end 432 -> 440.002 target 440, DSP 4.40184% realtime, latency 64.5125 ms
+  end-to-end 432 -> 440.001 target 440, DSP 6.02774% realtime, latency 64.5125 ms
   crossings 439.924 detected 452.078 correction -0.468819
-  end-to-end 452 -> 440.005 target 440, DSP 4.60372% realtime, latency 64.5125 ms
+  end-to-end 452 -> 440.005 target 440, DSP 4.44974% realtime, latency 64.5125 ms
   crossings 207.649 detected 213.003 correction -0.44047
-  end-to-end 213 -> 207.658 target 207.652, DSP 4.45325% realtime, latency 64.5125 ms
+  end-to-end 213 -> 207.658 target 207.652, DSP 4.39031% realtime, latency 64.5125 ms
   detection 48000 Hz: 82.41 -> 82.4109 (0.0183516 cents)
   detection 48000 Hz: 146.83 -> 146.831 (0.0127557 cents)
   detection 48000 Hz: 220 -> 220.009 (0.0725547 cents)
   detection 48000 Hz: 432 -> 432.025 (0.101489 cents)
   detection 48000 Hz: 880 -> 880.553 (1.08705 cents)
   crossings 439.972 detected 432.025 correction 0.316557
-  end-to-end 432 -> 440.002 target 440, DSP 4.83968% realtime, latency 59.6667 ms
+  end-to-end 432 -> 440.002 target 440, DSP 4.62377% realtime, latency 59.6667 ms
   crossings 439.923 detected 452.079 correction -0.469031
-  end-to-end 452 -> 439.951 target 440, DSP 4.8656% realtime, latency 59.6667 ms
-  crossings 207.647 detected 213.005 correction -0.440644
-  end-to-end 213 -> 207.65 target 207.652, DSP 4.91003% realtime, latency 59.6667 ms
+  end-to-end 452 -> 439.951 target 440, DSP 5.02357% realtime, latency 59.6667 ms
+  crossings 207.647 detected 213.005 correction -0.44064
+  end-to-end 213 -> 207.65 target 207.652, DSP 4.90015% realtime, latency 59.6667 ms
 ALL DSP TESTS PASSED
 PASS actual callback/worker: variable blocks, FIFO wrap, 44.1/48 kHz, restart, underrun, overflow, NaN and latched silence (no audio device opened)
-segment 0: 207.65 Hz, error -0.0156986 cents
-segment 1: 439.999 Hz, error -0.00535742 cents
-segment 2: 439.949 Hz, error -0.201773 cents
+PASS preset/control/keyboard state without a window or audio device
+segment 0: 207.65 Hz, error -0.0189478 cents
+segment 1: 439.999 Hz, error -0.00502131 cents
+segment 2: 439.949 Hz, error -0.201993 cents
 PASS 24-bit mono WAV x 2, 48000 Hz, 144000 samples each; actual saved audio is pitch-corrected
-take_20261013_003741_5642231_tuned.wav
-take_20261013_003741_5642231_original.wav
+take_20261013_231134_86875562_tuned.wav
+take_20261013_231134_86875562_original.wav
 PASS repeated start/stop at a changed sample rate
 
-Delivered executable SHA256: 7E0911FB6961CD4414F2C4BFCE599F06CD108B79CEF638E28AE7074BCF47DE7F
-Release x64 build and offline tests: PASS.
-Live microphone/headphone reproduction: NOT tested. Reported crackling root cause remains unconfirmed.
+Delivered executable SHA256: 120D2EA9F70C4D7385DE7ED8BF40E072F7AE19A540FD37D16742C964220A77CE
+Offline voice-file integrity tests: see VOICE-TEST-RESULTS.txt.
+UI rendered directly to PREVIEW.png; no desktop automation used.
+Live microphone/headphones and singing listening quality: NOT tested.

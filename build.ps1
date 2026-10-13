@@ -29,14 +29,14 @@ if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 & $cmakePath --build $BuildDirectory --config Release --parallel 4
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 $builtApp = Join-Path $BuildDirectory 'PitchLab_artefacts\Release\PitchLab.exe'
-Copy-Item -LiteralPath $builtApp -Destination (Join-Path $PSScriptRoot 'PitchLab.exe') -Force
 $testDirectory = Join-Path $BuildDirectory 'verification'
 New-Item -ItemType Directory -Force -Path $testDirectory | Out-Null
 try {
     $testProcess = Start-Process -FilePath $builtApp -ArgumentList @('--self-test',('"' + $testDirectory + '"')) -WindowStyle Hidden -Wait -PassThru
 } catch {
-    throw "Compilation succeeded and PitchLab.exe was copied, but Windows could not run the verification executable. Verification was NOT completed. $($_.Exception.Message)"
+    throw "Compilation succeeded, but Windows could not run verification. The existing executable was not replaced. $($_.Exception.Message)"
 }
 if ($testProcess.ExitCode -ne 0) { throw "Audio verification failed. Read $testDirectory\integration-test.txt" }
+Copy-Item -LiteralPath $builtApp -Destination (Join-Path $PSScriptRoot 'PitchLab.exe') -Force
 Copy-Item -LiteralPath (Join-Path $testDirectory 'integration-test.txt') -Destination (Join-Path $PSScriptRoot 'TEST-RESULTS.txt') -Force
 Write-Host 'Build and audio verification passed. Launch PitchLab.exe.'

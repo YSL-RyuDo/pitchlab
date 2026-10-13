@@ -17,6 +17,9 @@ public:
     std::atomic<int> bufferSamples{0}, totalLatencySamples{0};
     std::atomic<bool> deviceStopped{false};
     std::atomic<int> streamFault{0}; // 1 capture overflow, 2 playback underrun, 3 invalid output, 4 worker
+    std::atomic<int> captureOverflows{0}, outputUnderruns{0}, dspOverruns{0};
+    std::atomic<float> maxDspMs{0};
+    std::atomic<juce::int64> processedSamples{0};
     ~AudioEngine() override { stop(); }
     juce::String initialiseDevices() {
         if (devices.getCurrentAudioDevice()) return {};
@@ -53,6 +56,7 @@ public:
         reserve = std::clamp(std::max(2048, deviceBuffer * 3), 2048, capacity / 2);
         totalLatencySamples = pitch.latencySamples() + reserve + headphone.latencySamples();
         streamFault = 0; monitoring = false;
+        captureOverflows = 0; outputUnderruns = 0; dspOverruns = 0; maxDspMs = 0; processedSamples = 0;
         ready = startThread(juce::Thread::Priority::high);
         if (!ready.load()) streamFault = 4;
     }
@@ -106,7 +110,11 @@ private:
     pitchlab::HeadphoneGuard headphone;
     bool attached = false, primed = false;
     int reserve = 2048;
-    void fail(int code) { streamFault = code; monitoring = false; }
+    void fail(int code) {
+        if (code == 1) ++captureOverflows;
+        if (code == 2) ++outputUnderruns;
+        streamFault = code; monitoring = false;
+    }
     void stopWorker() { ready = false; signalThreadShouldExit(); notify(); waitForThreadToExit(-1); }
     void run() override {
         juce::ScopedNoDenormals noDenormals;
@@ -117,7 +125,12 @@ private:
             std::copy_n(capture.data() + a, n1, source.data());
             if (n2) std::copy_n(capture.data() + b, n2, source.data() + n1);
             inputFifo.finishedRead(n1 + n2);
+            const auto started = juce::Time::getMillisecondCounterHiRes();
             pitch.process(source.data(), wet.data(), dry.data(), chunkSize);
+            const auto elapsed = float(juce::Time::getMillisecondCounterHiRes() - started);
+            maxDspMs = std::max(maxDspMs.load(), elapsed);
+            if (elapsed > chunkSize * 1000.0 / currentRate.load()) ++dspOverruns;
+            processedSamples.fetch_add(chunkSize);
             recorder.push(wet.data(), dry.data(), chunkSize);
             outputFifo.prepareToWrite(chunkSize, a, n1, b, n2);
             std::copy_n(wet.data(), n1, playback.data() + a);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(PitchLab VERSION 0.1.1 LANGUAGES C CXX)
+project(PitchLab VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -14,7 +14,7 @@ target_include_directories(pitchlab_rubberband PUBLIC ${rubberband_SOURCE_DIR})
 target_compile_definitions(pitchlab_rubberband PRIVATE NOMINMAX _USE_MATH_DEFINES)
 juce_add_gui_app(PitchLab PRODUCT_NAME "PitchLab" COMPANY_NAME "PitchLab Study" BUNDLE_ID "org.pitchlab.study"
     NEEDS_WEB_BROWSER FALSE NEEDS_CURL FALSE)
-target_sources(PitchLab PRIVATE Source/Main.cpp Source/AudioEngine.h Source/PitchEngine.h Source/OutputGuard.h Source/Recorder.h)
+target_sources(PitchLab PRIVATE Source/Main.cpp Source/AudioEngine.h Source/PitchEngine.h Source/OutputGuard.h Source/OfflineRenderer.h Source/VocalKeyboard.h Source/Recorder.h)
 target_compile_definitions(PitchLab PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
     JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_USE_FLAC=0 JUCE_USE_OGGVORBIS=0 JUCE_ASIO=0)
 target_link_libraries(PitchLab PRIVATE juce::juce_audio_utils pitchlab_rubberband

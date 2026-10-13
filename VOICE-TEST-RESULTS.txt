@@ -1,0 +1,14 @@
+PASS 198-209-0000 preset=0 frames=667684 peak=0.177122 max_step=0.077994 dry_error=0.000000000
+PASS 3436-172162-0000 preset=0 frames=803760 peak=0.351079 max_step=0.054451 dry_error=0.000000119
+PASS 5703-47212-0000 preset=0 frames=712320 peak=0.370340 max_step=0.076659 dry_error=0.000000119
+PASS short-stereo preset=0 frames=173 peak=0.051539 max_step=0.003268 dry_error=0.000000060
+PASS silence preset=0 frames=513 peak=0.000000 max_step=0.000000 dry_error=0.000000000
+PASS 198-209-0000 preset=2 frames=667684 peak=0.160218 max_step=0.062171 dry_error=0.000000000
+PASS 3436-172162-0000 preset=2 frames=803760 peak=0.362430 max_step=0.048154 dry_error=0.000000119
+PASS 5703-47212-0000 preset=2 frames=712320 peak=0.357759 max_step=0.082865 dry_error=0.000000119
+PASS short-stereo preset=2 frames=173 peak=0.051539 max_step=0.003268 dry_error=0.000000060
+PASS silence preset=2 frames=513 peak=0.000000 max_step=0.000000 dry_error=0.000000000
+PASS 198-209-0000 Natural/Hard RMS difference=0.024021
+PASS 3436-172162-0000 Natural/Hard RMS difference=0.049755
+PASS 5703-47212-0000 Natural/Hard RMS difference=0.078479
+No audio played. Signal integrity checks do not establish listening quality.

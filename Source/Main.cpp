@@ -1,11 +1,13 @@
 #include "AudioEngine.h"
+#include "OfflineRenderer.h"
+#include "VocalKeyboard.h"
 #include <fstream>
 #define PITCHLAB_EMBEDDED_TESTS
 #include "../Tests/DspTests.cpp"
 
 namespace theme {
-const juce::Colour bg{0xff101116}, panel{0xff1a1c24}, field{0xff252834}, text{0xfff0f0f6}, muted{0xff969cad};
-const juce::Colour accent{0xffb6a1ff}, green{0xff73e3be}, red{0xffff8096};
+const juce::Colour bg{0xff11191f}, panel{0xff202b33}, field{0xff2c3a44}, text{0xffedf3f6}, muted{0xff9cacb8};
+const juce::Colour accent{0xff52dec7}, green{0xff73e3be}, red{0xffff8096};
 juce::Font font(float size, bool bold = false) {
     return juce::Font(juce::FontOptions("Malgun Gothic", size, bold ? juce::Font::bold : juce::Font::plain));
 }
@@ -29,6 +31,20 @@ struct Look : juce::LookAndFeel_V4 {
         setColour(juce::Label::textColourId, text);
         setColour(juce::ResizableWindow::backgroundColourId, bg);
     }
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float position,
+                          float start, float end, juce::Slider&) override {
+        const float radius = std::min(width, height) * 0.39f, cx = x + width * 0.5f, cy = y + height * 0.5f;
+        juce::Path track; track.addCentredArc(cx,cy,radius+7,radius+7,0,start,end,true);
+        g.setColour(field.brighter(0.2f)); g.strokePath(track,juce::PathStrokeType(3));
+        juce::Path arc; arc.addCentredArc(cx,cy,radius+7,radius+7,0,start,start+position*(end-start),true);
+        g.setColour(accent); g.strokePath(arc,juce::PathStrokeType(3));
+        g.setColour(juce::Colours::black.withAlpha(0.3f)); g.fillEllipse(cx-radius,cy-radius+4,radius*2,radius*2);
+        g.setGradientFill(juce::ColourGradient(juce::Colour(0xff465763),cx,cy-radius,juce::Colour(0xff1d2a33),cx,cy+radius,false));
+        g.fillEllipse(cx-radius,cy-radius,radius*2,radius*2);
+        g.setColour(juce::Colour(0xff627581)); g.drawEllipse(cx-radius,cy-radius,radius*2,radius*2,1);
+        const auto centre=juce::Point<float>(cx,cy); const float angle=start+position*(end-start);
+        g.setColour(text); g.drawLine({centre.getPointOnCircumference(radius*0.60f,angle),centre.getPointOnCircumference(radius*0.84f,angle)},3);
+    }
     juce::Font getTextButtonFont(juce::TextButton&, int) override { return font(15, true); }
     juce::Font getComboBoxFont(juce::ComboBox&) override { return font(15); }
     juce::Font getLabelFont(juce::Label&) override { return font(14); }
@@ -39,9 +55,9 @@ struct Look : juce::LookAndFeel_V4 {
 class MainComponent : public juce::Component, private juce::Timer {
 public:
     MainComponent() {
-        setLookAndFeel(&look); setSize(1000, 760);
+        setLookAndFeel(&look); setSize(1100, 840);
         recordings = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("Recordings");
-        setupButton(deviceButton, juce::String::fromUTF8("마이크 / 헤드폰 설정"));
+        setupButton(deviceButton, juce::String::fromUTF8("오디오 설정"));
         setupButton(startButton, juce::String::fromUTF8("마이크 시작"));
         setupButton(recordButton, juce::String::fromUTF8("●  녹음 시작"));
         setupButton(folderButton, juce::String::fromUTF8("녹음 폴더 열기"));
@@ -54,17 +70,17 @@ public:
         setupToggle(bypass, juce::String::fromUTF8("보정 켜기"), true);
         setupToggle(formants, juce::String::fromUTF8("목소리 음색 유지"), true);
         key.addItemList({"C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"}, 1);
-        scale.addItemList({juce::String::fromUTF8("모든 반음 · Chromatic"), juce::String::fromUTF8("장조 · Major"), juce::String::fromUTF8("자연단음계 · Minor"), juce::String::fromUTF8("마이너 펜타토닉")}, 1);
+        scale.addItemList({juce::String::fromUTF8("모든 반음 · Chromatic"), juce::String::fromUTF8("장조 · Major"), juce::String::fromUTF8("자연단음계 · Minor"), juce::String::fromUTF8("마이너 펜타토닉"), juce::String::fromUTF8("직접 고른 음")}, 1);
         key.setSelectedId(1); scale.setSelectedId(1);
         key.setTitle(juce::String::fromUTF8("곡의 키")); scale.setTitle(juce::String::fromUTF8("곡의 스케일"));
         addAndMakeVisible(key); addAndMakeVisible(scale);
         setupSlider(speed, 0, 150, 1, 12, " ms", juce::String::fromUTF8("보정 속도"));
         setupSlider(amount, 0, 100, 1, 100, "%", juce::String::fromUTF8("보정 강도"));
         setupSlider(volume, -60, -18, 1, -36, " dB", juce::String::fromUTF8("헤드폰 음량"));
-        key.onChange = [this] { audio.pitch.parameters.key = key.getSelectedId() - 1; };
-        scale.onChange = [this] { audio.pitch.parameters.scale = scale.getSelectedId() - 1; };
-        speed.onValueChange = [this] { audio.pitch.parameters.retuneMs = float(speed.getValue()); };
-        amount.onValueChange = [this] { audio.pitch.parameters.amount = float(amount.getValue() / 100); };
+        key.onChange = [this] { updateScale(); };
+        scale.onChange = [this] { updateScale(); };
+        speed.onValueChange = [this] { audio.pitch.parameters.retuneMs = float(speed.getValue()); markCustom(); };
+        amount.onValueChange = [this] { audio.pitch.parameters.amount = float(amount.getValue() / 100); markCustom(); };
         volume.onValueChange = [this] { audio.monitorDb = float(volume.getValue()); };
         monitor.onClick = [this] { audio.monitoring = monitor.getToggleState(); };
         bypass.onClick = [this] { audio.pitch.parameters.enabled = bypass.getToggleState(); };
@@ -90,6 +106,24 @@ public:
         monitor.setTooltip(juce::String::fromUTF8("유선 헤드폰을 연결한 뒤 켜 주세요. 녹음은 듣기 설정과 관계없이 저장됩니다."));
         bypass.setTooltip(juce::String::fromUTF8("끄면 보정하지 않은 소리를 출력합니다. 전환은 부드럽게 이어집니다."));
         recordButton.setEnabled(false); monitor.setEnabled(false);
+        setupSlider(humanize, 0, 100, 1, 65, "%", juce::String::fromUTF8("긴 음의 흔들림 유지"));
+        for (auto* knob : {&speed, &amount, &humanize, &volume}) {
+            knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            knob->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 95, 24);
+            knob->setRotaryParameters(juce::MathConstants<float>::pi * 1.2f, juce::MathConstants<float>::pi * 2.8f, true);
+        }
+        humanize.onValueChange = [this] { audio.pitch.parameters.humanize = float(humanize.getValue() / 100); markCustom(); };
+        humanize.setTooltip(juce::String::fromUTF8("길게 유지하는 음에서 보정을 느리게 해 작은 흔들림을 남깁니다."));
+        preset.addItemList({"Natural vocal", "Tight pop", "Hard tune", "Custom"}, 1); addAndMakeVisible(preset);
+        preset.onChange = [this] { if (preset.getSelectedId() <= 3) applyPreset(preset.getSelectedId() - 1); };
+        preset.setSelectedId(1, juce::sendNotificationSync);
+        voice.addItemList({juce::String::fromUTF8("자동 음역"), juce::String::fromUTF8("낮은 음역 · 65–400 Hz"), juce::String::fromUTF8("높은 음역 · 130–1000 Hz")}, 1);
+        voice.setSelectedId(1); addAndMakeVisible(voice);
+        voice.onChange = [this] { audio.pitch.parameters.voiceRange = voice.getSelectedId() - 1; };
+        addAndMakeVisible(keyboard);
+        keyboard.onMaskChanged = [this](int mask) { audio.pitch.parameters.noteMask = mask; scale.setSelectedId(5, juce::dontSendNotification); };
+        setupButton(fileButton, juce::String::fromUTF8("WAV 파일 보정")); fileButton.onClick = [this] { chooseFile(); };
+        setupButton(diagnosticButton, juce::String::fromUTF8("진단 저장")); diagnosticButton.onClick = [this] { saveDiagnostics(); };
         historyInput.fill(-1); historyTarget.fill(-1);
         status = juce::String::fromUTF8("유선 헤드폰을 연결하고 ‘마이크 시작’을 눌러 주세요.");
         startTimerHz(30);
@@ -99,74 +133,104 @@ public:
         if (deviceWindow) delete deviceWindow.getComponent();
         audio.stop(); setLookAndFeel(nullptr);
     }
+    void verifyControls() {
+        require(std::abs(audio.pitch.parameters.humanize.load()-0.65f)<0.001f && audio.pitch.parameters.retuneMs.load()==45, "initial preset reaches DSP even when slider value is unchanged");
+        preset.setSelectedId(3,juce::sendNotificationSync);
+        require(audio.pitch.parameters.retuneMs.load()==0 && audio.pitch.parameters.humanize.load()==0, "Hard tune preset reaches DSP");
+        require(!audio.monitoring.load() && audio.monitorDb.load()==-36, "preset never enables or raises monitor");
+        speed.setValue(23,juce::sendNotificationSync);
+        require(preset.getSelectedId()==4 && audio.pitch.parameters.retuneMs.load()==23, "manual editing marks Custom");
+        scale.setSelectedId(2,juce::sendNotificationSync);
+        require(!(keyboard.mask & 2), "major scale excludes C sharp in keyboard");
+        keyboard.togglePitchClass(1);
+        require((audio.pitch.parameters.noteMask.load() & 2) && scale.getSelectedId()==5, "keyboard edits reach custom DSP mask");
+        keyboard.mask=1; keyboard.togglePitchClass(0);
+        require(keyboard.mask==1, "keyboard cannot disable every note");
+    }
     void resized() override {
-        deviceButton.setBounds(28, 99, 204, 38); startButton.setBounds(792, 94, 180, 48);
-        key.setBounds(668, 208, 282, 34); scale.setBounds(668, 278, 282, 34);
-        speed.setBounds(658, 356, 300, 42); amount.setBounds(658, 441, 300, 42);
-        formants.setBounds(663, 506, 285, 30);
-        recordButton.setBounds(50, 606, 186, 48);
-        folderButton.setBounds(50, 666, 140, 30); locationButton.setBounds(202, 666, 140, 30);
-        monitor.setBounds(634, 601, 168, 32); bypass.setBounds(820, 601, 140, 32);
-        volume.setBounds(724, 651, 236, 38);
+        preset.setBounds(716, 32, 218, 34);
+        key.setBounds(45, 117, 126, 33); scale.setBounds(185, 117, 258, 33);
+        voice.setBounds(461, 117, 237, 33); formants.setBounds(718, 118, 196, 32); bypass.setBounds(925, 118, 142, 32);
+        speed.setBounds(52, 250, 145, 134); amount.setBounds(218, 250, 145, 134);
+        humanize.setBounds(739, 250, 145, 134); volume.setBounds(905, 250, 145, 134);
+        keyboard.setBounds(50, 608, 706, 80);
+        startButton.setBounds(44, 727, 146, 38); recordButton.setBounds(204, 727, 152, 38);
+        monitor.setBounds(376, 730, 171, 32); fileButton.setBounds(562, 727, 156, 38);
+        diagnosticButton.setBounds(734, 727, 123, 38); deviceButton.setBounds(875, 727, 180, 38);
+        folderButton.setBounds(44, 775, 146, 24); locationButton.setBounds(204, 775, 152, 24);
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(theme::bg);
-        g.setColour(theme::accent); g.fillRoundedRectangle(28, 24, 42, 42, 12);
+        g.setColour(theme::accent); g.fillRoundedRectangle(28, 27, 42, 42, 11);
         g.setColour(theme::bg);
-        for (int i = 0; i < 5; ++i) { float h = float(10 + (2 - std::abs(i - 2)) * 7); g.fillRoundedRectangle(float(37 + i * 5), 45 - h / 2, 3, h, 1.5f); }
-        text(g, "PitchLab", 84, 19, 230, 40, 28, theme::text, true);
-        text(g, "LIVE VOCAL STUDIO", 85, 59, 300, 20, 10, theme::muted, true);
-        text(g, juce::String::fromUTF8("내 목소리, 원하는 음으로."), 525, 35, 274, 26, 15, theme::muted);
-        g.setColour(running ? theme::green.withAlpha(0.12f) : theme::field);
-        g.fillRoundedRectangle(823, 30, 149, 34, 17);
-        text(g, running ? juce::String::fromUTF8("●  LIVE") : juce::String::fromUTF8("●  STANDBY"), 823, 32, 149, 29, 12, running ? theme::green : theme::muted, true, juce::Justification::centred);
-        text(g, deviceDescription, 247, 99, 523, 22, 12, theme::muted);
-        auto info = running ? juce::String(audio.currentRate.load() / 1000, 1) + " kHz  /  " + juce::String(audio.bufferSamples.load()) + juce::String::fromUTF8(" samples  /  예상 왕복 ")
-            + juce::String(audio.totalLatencySamples.load() * 1000.0 / audio.currentRate.load(), 0) + " ms" : juce::String::fromUTF8("장치 선택 → 마이크 시작 → 녹음");
-        text(g, info, 247, 122, 523, 19, 11, theme::muted);
-        card(g, 28, 166, 594, 398); card(g, 642, 166, 330, 398); card(g, 28, 584, 944, 123);
-        text(g, "LIVE PITCH", 50, 183, 220, 20, 11, theme::muted, true);
-        text(g, juce::String::fromUTF8("입력 음"), 52, 219, 170, 20, 12, theme::muted);
-        text(g, juce::String::fromUTF8("목표 음"), 362, 219, 200, 20, 12, theme::muted);
-        auto hz = audio.pitch.detectedHz.load();
-        auto midi = hz > 0 && running ? pitchlab::midiFromHz(hz) : -1;
-        auto target = running ? audio.pitch.targetMidi.load() : -1;
-        text(g, noteName(midi), 47, 244, 235, 66, 48, theme::text, true);
-        text(g, juce::String::fromUTF8("→"), 275, 253, 60, 48, 30, theme::muted);
-        text(g, noteName(target), 355, 244, 230, 66, 48, theme::accent, true);
-        text(g, midi >= 0 ? juce::String(hz, 1) + " Hz" : juce::String::fromUTF8("목소리를 기다리고 있어요"), 53, 308, 230, 20, 12, theme::muted);
-        text(g, target >= 0 ? juce::String(audio.pitch.correction.load(), 2) + " semitones" : juce::String::fromUTF8("스케일에 맞춰 자동 선택"), 362, 308, 224, 20, 12, theme::muted);
-        drawHistory(g);
-        text(g, juce::String::fromUTF8("입력"), 50, 515, 36, 20, 11, theme::muted); meter(g, 90, 522, 190, displayedInput, theme::green);
-        text(g, juce::String::fromUTF8("출력"), 310, 515, 36, 20, 11, theme::muted); meter(g, 350, 522, 190, displayedOutput, theme::accent);
-        if (clipFrames > 0) text(g, "CLIP", 550, 515, 55, 20, 10, theme::red, true);
-        text(g, juce::String::fromUTF8("곡의 키"), 668, 182, 282, 22, 12, theme::muted);
-        text(g, juce::String::fromUTF8("스케일"), 668, 252, 282, 22, 12, theme::muted);
-        text(g, juce::String::fromUTF8("보정 속도"), 668, 328, 240, 24, 13, theme::text, true);
-        text(g, juce::String::fromUTF8("빠르게 · 기계적인 효과           천천히 · 부드럽게"), 668, 400, 285, 20, 10, theme::muted);
-        text(g, juce::String::fromUTF8("보정 강도"), 668, 419, 240, 24, 13, theme::text, true);
-        text(g, juce::String::fromUTF8("0% 원래 음정                         100% 목표 음정"), 668, 484, 285, 20, 10, theme::muted);
-        const auto sec = audio.recorder.seconds();
-        text(g, recording ? juce::String::fromUTF8("●  REC  ") + timeString(sec) : lastTake.isNotEmpty() ? "SAVED  " + timeString(lastSeconds) : "READY TO RECORD", 260, 608, 350, 25, 16,
-            recording ? theme::red : theme::text, true);
-        text(g, recording ? juce::String::fromUTF8("보정음 + 원본을 함께 저장 중") : juce::String::fromUTF8("WAV · 24-bit · 원본도 별도로 저장"), 260, 640, 350, 20, 11, theme::muted);
-        text(g, juce::String::fromUTF8("헤드폰 음량"), 642, 655, 83, 27, 12, theme::muted);
-        text(g, status, 29, 719, 810, 27, 12, statusError ? theme::red : theme::muted);
-        text(g, "STUDY BUILD 0.1.1", 830, 721, 142, 22, 10, theme::muted, false, juce::Justification::right);
+        for (int i = 0; i < 5; ++i) { float h = float(12 + (2 - std::abs(i - 2)) * 8); g.fillRoundedRectangle(float(37 + i * 5), 48 - h / 2, 3, h, 1.5f); }
+        text(g, "PitchLab", 84, 21, 215, 38, 28, theme::text, true);
+        text(g, "VOCAL TUNING / 02", 87, 60, 250, 16, 10, theme::muted, true);
+        text(g, "PRESET", 644, 37, 70, 23, 10, theme::muted, true);
+        g.setColour(running ? theme::accent.withAlpha(0.12f) : theme::field); g.fillRoundedRectangle(951, 32, 121, 34, 17);
+        text(g, running ? "LIVE" : "STANDBY", 952, 36, 120, 24, 11, running ? theme::accent : theme::muted, true, juce::Justification::centred);
+        card(g, 28, 91, 1044, 74);
+        text(g, "KEY", 47, 96, 125, 18, 10, theme::muted, true); text(g, "SCALE", 187, 96, 240, 18, 10, theme::muted, true);
+        text(g, "VOICE RANGE", 463, 96, 230, 18, 10, theme::muted, true);
+        card(g, 28, 180, 1044, 267);
+        text(g, "RETUNE SPEED", 40, 208, 170, 22, 11, theme::muted, true, juce::Justification::centred);
+        text(g, "CORRECTION", 207, 208, 167, 22, 11, theme::muted, true, juce::Justification::centred);
+        text(g, "HUMANIZE", 729, 208, 166, 22, 11, theme::muted, true, juce::Justification::centred);
+        text(g, "HEADPHONES", 894, 208, 167, 22, 11, theme::muted, true, juce::Justification::centred);
+        text(g, juce::String::fromUTF8("음에 붙는 속도"), 40, 398, 170, 22, 12, theme::text, false, juce::Justification::centred);
+        text(g, juce::String::fromUTF8("목표 음으로 보정"), 207, 398, 167, 22, 12, theme::text, false, juce::Justification::centred);
+        text(g, juce::String::fromUTF8("긴 음의 흔들림 유지"), 723, 398, 174, 22, 12, theme::text, false, juce::Justification::centred);
+        text(g, juce::String::fromUTF8("듣기 음량만 조절"), 891, 398, 173, 22, 12, theme::text, false, juce::Justification::centred);
+        const float cx = 550, cy = 302, r = 105;
+        g.setColour(juce::Colour(0xff10181e)); g.fillEllipse(cx-r,cy-r,2*r,2*r);
+        g.setColour(theme::field); g.drawEllipse(cx-r,cy-r,2*r,2*r,2);
+        for (int i=0;i<=40;++i) {
+            const float angle = -2.3f + i * 4.6f / 40;
+            const auto centre = juce::Point<float>(cx,cy);
+            const auto a = centre.getPointOnCircumference(r-8,angle), b = centre.getPointOnCircumference(r-(i%5==0?17.0f:12.0f),angle);
+            g.setColour(i%5==0?theme::muted:theme::field); g.drawLine({a,b},1.4f);
+        }
+        const float hz = running ? audio.pitch.detectedHz.load() : 0;
+        const double midi = hz > 0 ? pitchlab::midiFromHz(hz) : -1;
+        const double target = running ? audio.pitch.targetMidi.load() : -1;
+        if (target >= 0 && midi >= 0) {
+            const float angle = float(std::clamp((midi-target)*100.0,-50.0,50.0)/50.0*2.3);
+            const auto centre = juce::Point<float>(cx,cy);
+            g.setColour(theme::accent); g.drawLine({centre.getPointOnCircumference(83,angle),centre.getPointOnCircumference(102,angle)},4);
+        }
+        text(g,"TARGET NOTE",460,237,180,20,10,theme::muted,true,juce::Justification::centred);
+        text(g,noteName(target),451,266,198,66,49,theme::accent,true,juce::Justification::centred);
+        text(g,midi>=0 ? noteName(midi)+" / "+juce::String(hz,1)+" Hz" : juce::String::fromUTF8("목소리를 기다리는 중"),448,341,204,24,12,theme::muted,false,juce::Justification::centred);
+        text(g,target>=0 ? juce::String(audio.pitch.correction.load()*100,0)+" cents" : "INPUT  /  TARGET",439,417,222,21,11,theme::muted,false,juce::Justification::centred);
+        card(g,28,461,1044,102); text(g,"PITCH TRACE",50,466,200,18,10,theme::muted,true); drawHistory(g);
+        card(g,28,577,1044,125); text(g,juce::String::fromUTF8("보정할 음 선택"),50,582,280,21,12,theme::text,true);
+        text(g,juce::String::fromUTF8("건반을 눌러 음을 켜고 끄세요"),800,612,244,25,12,theme::text);
+        text(g,juce::String::fromUTF8("초록 표시 = 보정에 사용할 음"),800,645,244,24,11,theme::muted);
+        card(g,28,714,1044,94);
+        text(g,"IN",377,777,23,18,9,theme::muted,true); meter(g,404,783,132,displayedInput,theme::green);
+        text(g,"OUT",563,777,30,18,9,theme::muted,true); meter(g,598,783,121,displayedOutput,theme::accent);
+        text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?"DSP "+juce::String(audio.maxDspMs.load(),1)+" ms / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,773,316,25,11,recording?theme::red:theme::muted);
+        text(g,status,30,814,875,22,11,statusError?theme::red:theme::muted);
+        text(g,"STUDY 0.2.0",929,814,140,22,10,theme::muted,false,juce::Justification::right);
     }
+
 private:
     theme::Look look;
     AudioEngine audio;
-    juce::TextButton deviceButton, startButton, recordButton, folderButton, locationButton;
+    juce::TextButton deviceButton, startButton, recordButton, folderButton, locationButton, fileButton, diagnosticButton;
     juce::ToggleButton monitor, bypass, formants;
-    juce::ComboBox key, scale;
-    juce::Slider speed, amount, volume;
+    juce::ComboBox key, scale, preset, voice;
+    VocalKeyboard keyboard;
+    std::unique_ptr<OfflineRenderer> renderJob;
+    int driverXruns = 0, xrunBaseline = 0;
+    juce::String lastDiagnostic;
+    juce::Slider speed, amount, humanize, volume;
     juce::TooltipWindow tooltips{this, 700};
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::DialogWindow> deviceWindow;
     juce::File recordings;
     juce::String status, lastTake, deviceDescription{juce::String::fromUTF8("기본 마이크 / 기본 출력 장치")};
-    bool running = false, recording = false, statusError = false;
+    bool running = false, recording = false, statusError = false, applyingPreset = false;
     double lastSeconds = 0;
     float displayedInput = 0, displayedOutput = 0;
     int historyPos = 0, clipFrames = 0;
@@ -201,7 +265,7 @@ private:
         g.setColour(colour); g.fillRoundedRectangle(x, y, width * normalized, 5, 2);
     }
     void drawHistory(juce::Graphics& g) {
-        const juce::Rectangle<float> plot(52, 354, 543, 129);
+        const juce::Rectangle<float> plot(50, 490, 1000, 62);
         g.setColour(theme::bg.withAlpha(0.65f)); g.fillRoundedRectangle(plot, 8);
         for (int i = 1; i < 4; ++i) { g.setColour(theme::field); g.drawHorizontalLine(int(plot.getY() + i * plot.getHeight() / 4), plot.getX(), plot.getRight()); }
         auto draw = [&](const std::array<float, 160>& history, juce::Colour color, float thickness) {
@@ -216,15 +280,63 @@ private:
             g.setColour(color); g.strokePath(path, juce::PathStrokeType(thickness));
         };
         draw(historyTarget, theme::accent.withAlpha(0.7f), 1.5f); draw(historyInput, theme::green, 2);
-        if (!running) text(g, juce::String::fromUTF8("마이크를 시작하면 음높이가 여기에 표시돼요"), 65, 397, 516, 28, 12, theme::muted, false, juce::Justification::centred);
-        text(g, juce::String::fromUTF8("● 입력"), 444, 333, 66, 18, 10, theme::green); text(g, juce::String::fromUTF8("● 목표"), 516, 333, 76, 18, 10, theme::accent);
+        if (!running) text(g, juce::String::fromUTF8("마이크를 시작하면 음높이가 여기에 표시돼요"), 260, 506, 580, 28, 12, theme::muted, false, juce::Justification::centred);
+        text(g, juce::String::fromUTF8("● 입력"), 895, 466, 66, 18, 10, theme::green); text(g, juce::String::fromUTF8("● 목표"), 972, 466, 76, 18, 10, theme::accent);
+    }
+    void markCustom() { if (!applyingPreset && preset.getNumItems() > 0) preset.setSelectedId(4, juce::dontSendNotification); }
+    void applyPreset(int index) {
+        applyingPreset = true;
+        auto settings = VocalSettings::preset(index);
+        speed.setValue(settings.speed,juce::sendNotificationSync); amount.setValue(settings.amount*100,juce::sendNotificationSync);
+        humanize.setValue(settings.humanize*100,juce::sendNotificationSync);
+        audio.pitch.parameters.retuneMs = settings.speed; audio.pitch.parameters.amount = settings.amount; audio.pitch.parameters.humanize = settings.humanize;
+        applyingPreset = false;
+        // A preset changes tone controls, never output volume or monitoring.
+    }
+    void updateScale() {
+        audio.pitch.parameters.key=key.getSelectedId()-1;
+        if (scale.getSelectedId()==5) { audio.pitch.parameters.noteMask=keyboard.mask; return; }
+        audio.pitch.parameters.scale=scale.getSelectedId()-1; audio.pitch.parameters.noteMask=0;
+        keyboard.mask=pitchlab::scaleMask(key.getSelectedId()-1,scale.getSelectedId()-1); keyboard.repaint();
+    }
+    juce::String diagnosticText() {
+        auto* device=audio.devices.getCurrentAudioDevice();
+        juce::String result="PitchLab 0.2.0 device diagnostic\n";
+        result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
+        result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
+        result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
+        result+="\nStream fault: "+juce::String(audio.streamFault.load())+"\nCapture overflow: "+juce::String(audio.captureOverflows.load());
+        result+="\nPlayback underrun: "+juce::String(audio.outputUnderruns.load())+"\nDSP late blocks: "+juce::String(audio.dspOverruns.load());
+        result+="\nLongest DSP block ms: "+juce::String(audio.maxDspMs.load(),3)+"\nDevice xruns since start: "+juce::String(driverXruns);
+        result+="\nProcessed frames: "+juce::String(audio.processedSamples.load())+"\nMonitoring: "+juce::String(int(audio.monitoring.load()));
+        result+="\nCurrent device open: "+juce::String(int(device!=nullptr))+"\nNo microphone audio included.\n";
+        return result;
+    }
+    void saveDiagnostics(bool announce=true) {
+        if (recordings.createDirectory().failed()) { if(announce)showError(juce::String::fromUTF8("진단 저장 폴더를 만들지 못했어요.")); return; }
+        auto file=recordings.getNonexistentChildFile("diagnostic_"+juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S"),".txt");
+        const bool ok=file.replaceWithText(running||lastDiagnostic.isEmpty()?diagnosticText():lastDiagnostic);
+        if(announce) { statusError=!ok; status=ok?juce::String::fromUTF8("녹음 폴더에 장치 진단을 저장했어요."):juce::String::fromUTF8("진단 파일을 저장하지 못했어요."); }
+    }
+    void chooseFile() {
+        if(running || renderJob) return;
+        chooser=std::make_unique<juce::FileChooser>(juce::String::fromUTF8("보정할 보컬 WAV 선택"),juce::File(),"*.wav");
+        juce::Component::SafePointer<MainComponent> safe(this);
+        chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe](const juce::FileChooser& fc){
+            if(!safe || !fc.getResult().existsAsFile())return;
+            safe->renderJob=std::make_unique<OfflineRenderer>();
+            if(!safe->renderJob->start(fc.getResult(),safe->recordings,VocalSettings::capture(safe->audio.pitch.parameters))) {
+                safe->renderJob.reset(); safe->showError(juce::String::fromUTF8("파일 처리 스레드를 시작하지 못했어요.")); return;
+            }
+            safe->startButton.setEnabled(false); safe->fileButton.setEnabled(false); safe->statusError=false;
+        });
     }
     void showError(const juce::String& error) { status = error; statusError = true; repaint(); }
     void toggleAudio() {
         monitor.setToggleState(false, juce::dontSendNotification); audio.monitoring = false;
         if (running) {
             if (recording) finishRecording();
-            audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false);
+            lastDiagnostic = diagnosticText(); audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false);
             deviceButton.setEnabled(true); status = juce::String::fromUTF8("마이크를 멈췄어요."); statusError = false;
         } else {
             if (deviceWindow) { deviceWindow->exitModalState(0); deviceWindow = nullptr; }
@@ -233,9 +345,9 @@ private:
             running = true; startButton.setButtonText(juce::String::fromUTF8("마이크 멈추기")); recordButton.setEnabled(true); deviceButton.setEnabled(false);
             historyInput.fill(-1); historyTarget.fill(-1);
             status = juce::String::fromUTF8("노래해 보세요. 헤드폰을 연결했다면 ‘헤드폰으로 듣기’를 켜 주세요."); statusError = false;
-            updateDeviceDescription();
+            updateDeviceDescription(); xrunBaseline = audio.devices.getXRunCount(); driverXruns = 0;
         }
-        monitor.setEnabled(running);
+        monitor.setEnabled(running); fileButton.setEnabled(!running);
         repaint();
     }
     void updateDeviceDescription() {
@@ -270,11 +382,28 @@ private:
         deviceWindow = options.launchAsync();
     }
     void timerCallback() override {
+        if (renderJob) {
+            if (renderJob->done.load()) {
+                renderJob->waitForCompletion();
+                statusError = renderJob->error.isNotEmpty();
+                status = statusError ? renderJob->error : juce::String::fromUTF8("파일 보정 완료 · 원본과 보정음, 검사 기록을 저장했어요.");
+                renderJob.reset(); startButton.setEnabled(true); fileButton.setEnabled(true);
+            } else status = juce::String::fromUTF8("WAV 파일 보정 중 · ") + juce::String(int(renderJob->progress.load() * 100)) + "%";
+        }
+        if (running) {
+            const int latest = std::max(0, audio.devices.getXRunCount() - xrunBaseline);
+            if (latest > driverXruns && audio.processedSamples.load() > audio.currentRate.load() * 0.5) {
+                audio.monitoring = false; audio.streamFault = 5;
+            }
+            driverXruns = latest;
+        }
+        keyboard.activeNote = running && audio.pitch.targetMidi.load() >= 0 ? int(audio.pitch.targetMidi.load()) : -1; keyboard.repaint();
         if (running && (audio.deviceStopped.load() || audio.streamFault.load() != 0)) {
             const int fault = audio.streamFault.load();
             if (recording) finishRecording();
-            audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false); deviceButton.setEnabled(true);
-            monitor.setToggleState(false, juce::dontSendNotification); monitor.setEnabled(false);
+            lastDiagnostic = diagnosticText(); audio.stop(); running = false; startButton.setButtonText(juce::String::fromUTF8("마이크 시작")); recordButton.setEnabled(false); deviceButton.setEnabled(true);
+            monitor.setToggleState(false, juce::dontSendNotification); monitor.setEnabled(false); fileButton.setEnabled(true);
+            saveDiagnostics(false);
             showError(fault != 0 ? juce::String::fromUTF8("오디오 처리 이상으로 출력을 차단하고 녹음을 멈췄어요. 오류 ") + juce::String(fault)
                                 : juce::String::fromUTF8("오디오 장치 연결이 끊겼어요. 장치를 확인하고 다시 시작해 주세요."));
         }
@@ -296,7 +425,7 @@ private:
 // Exercise the actual callback and DSP worker with memory-only buffers.
 int runStreamTests(std::ostream& log) {
     try {
-        AudioEngine engine;
+        auto ownedEngine = std::make_unique<AudioEngine>(); auto& engine = *ownedEngine;
         std::vector<float> input(32768), left(32768), right(32768);
         const float* ins[] = {input.data()}; float* outs[] = {left.data(), right.data()};
         juce::AudioIODeviceCallbackContext context;
@@ -358,7 +487,9 @@ int runSelfTest(const juce::File& folder) {
     if (!log) return 2;
     if (runDspTests(log) != 0) return 9;
     if (runStreamTests(log) != 0) return 10;
-    AudioEngine engine; engine.pitch.prepare(48000); engine.pitch.parameters.retuneMs = 0;
+    try { auto panel = std::make_unique<MainComponent>(); panel->verifyControls(); log << "PASS preset/control/keyboard state without a window or audio device\n"; }
+    catch (const std::exception& e) { log << "FAIL controls: " << e.what() << '\n'; return 14; }
+    auto ownedEngine = std::make_unique<AudioEngine>(); auto& engine = *ownedEngine; engine.pitch.prepare(48000); engine.pitch.parameters.retuneMs = 0;
     auto error = engine.recorder.start(folder, 48000);
     if (error.isNotEmpty()) { log << error << '\n'; return 3; }
     constexpr int samples = 48000 * 3;
@@ -408,9 +539,23 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.1.1"; }
+    const juce::String getApplicationVersion() override { return "0.2.0"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
+        if(args.size()>=2 && args[0]=="--render-ui") {
+            auto panel = std::make_unique<MainComponent>();
+            auto rendered=panel->createComponentSnapshot(panel->getLocalBounds(),true,1.0f);
+            juce::File target(args[1].unquoted()); target.getParentDirectory().createDirectory();
+            auto stream=target.createOutputStream(); juce::PNGImageFormat png;
+            setApplicationReturnValue(stream && png.writeImageToStream(rendered,*stream)?0:12); quit(); return;
+        }
+        if(args.size()>=3 && args[0]=="--render") {
+            OfflineRenderer job;
+            const int selected=args.size()>3?std::clamp(args[3].getIntValue(),0,2):0;
+            const auto error=OfflineRenderer::render(juce::File(args[1].unquoted()),juce::File(args[2].unquoted()),VocalSettings::preset(selected),job);
+            if(error.isNotEmpty()) juce::File(args[2].unquoted()).getChildFile("render-error.txt").replaceWithText(error);
+            setApplicationReturnValue(error.isEmpty()?0:13); quit(); return;
+        }
         if (args.size() >= 2 && args[0] == "--self-test") {
             juce::File folder(args[1].unquoted()); folder.createDirectory();
             setApplicationReturnValue(runSelfTest(folder)); quit(); return;
@@ -422,10 +567,20 @@ public:
     class Window : public juce::DocumentWindow {
     public:
         Window() : DocumentWindow(juce::String::fromUTF8("PitchLab · 실시간 보컬 보정"), theme::bg, DocumentWindow::allButtons) {
-            setUsingNativeTitleBar(true); setContentOwned(new MainComponent(), true);
+            setUsingNativeTitleBar(true);
+            auto* content = new MainComponent();
+            float factor = 1.0f;
+            if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
+                factor = std::max(0.5f,std::min({1.0f, (display->userArea.getWidth()-60)/1100.0f, (display->userArea.getHeight()-80)/840.0f}));
+            }
+            auto* host = new juce::Component(); host->addAndMakeVisible(content);
+            content->setTransform(juce::AffineTransform::scale(factor));
+            host->setSize(int(std::ceil(1100*factor)),int(std::ceil(840*factor)));
+            scaledContent.reset(content); setContentOwned(host, true);
             setResizable(false, false); centreWithSize(getWidth(), getHeight()); setVisible(true);
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
+        std::unique_ptr<MainComponent> scaledContent;
     };
     std::unique_ptr<Window> window;
 };

@@ -29,6 +29,21 @@ inline int nearestNote(double midi, int key, int scale) {
         }
     return best;
 }
+inline int scaleMask(int key, int scale) {
+    int mask = 0;
+    for (int n = 0; n < 12; ++n) if (allowedNote(n, key, scale)) mask |= 1 << n;
+    return mask;
+}
+inline int nearestMaskedNote(double midi, int mask) {
+    int best = int(std::round(midi)); double distance = 100;
+    mask &= 0xfff;
+    if (mask == 0) return best;
+    for (int n = best - 12; n <= int(std::round(midi)) + 12; ++n)
+        if ((mask & (1 << ((n % 12 + 12) % 12))) && std::abs(n - midi) < distance) {
+            best = n; distance = std::abs(n - midi);
+        }
+    return best;
+}
 
 // YIN cumulative mean normalized difference. Downsampling and fixed buffers keep
 // all allocation outside the audio callback. Unvoiced sound returns 0 Hz.
@@ -52,17 +67,18 @@ public:
         hop = 0; analyse(); return true;
     }
     double frequency = 0, confidence = 0;
+    void setRange(int range) { minHz = range == 2 ? 130 : 65; maxHz = range == 1 ? 400 : 1000; }
 private:
     static constexpr int size = 1024;
     std::array<float, size> ring{}, frame{}, difference{};
     int pos = 0, count = 0, hop = 0, decCount = 0, decimation = 2;
-    double dsRate = 24000, lp1 = 0, lp2 = 0, lowPass = 0.3;
+    double dsRate = 24000, lp1 = 0, lp2 = 0, lowPass = 0.3, minHz = 65, maxHz = 1000;
     void analyse() {
         double energy = 0;
         for (int i = 0; i < size; ++i) { frame[i] = ring[(pos + i) % size]; energy += frame[i] * frame[i]; }
         if (energy / size < 0.0000158) { frequency = confidence = 0; return; }
-        const int maxLag = std::min(size / 2 - 1, int(dsRate / 65.0));
-        const int minLag = std::max(2, int(dsRate / 1000.0));
+        const int maxLag = std::min(size / 2 - 1, int(dsRate / minHz));
+        const int minLag = std::max(2, int(dsRate / maxHz));
         const int length = size - maxLag;
         double accumulated = 0;
         difference[0] = 1;
@@ -98,6 +114,8 @@ private:
 struct Parameters {
     std::atomic<int> key{0}, scale{0};
     std::atomic<float> retuneMs{12}, amount{1}, outputDb{-6};
+    std::atomic<int> noteMask{0}, voiceRange{0}; // 0 mask uses key/scale
+    std::atomic<float> humanize{0};
     std::atomic<bool> enabled{true}, preserveFormants{true};
 };
 
@@ -105,6 +123,7 @@ class PitchEngine {
 public:
     Parameters parameters;
     std::atomic<float> detectedHz{0}, targetMidi{-1}, correction{0}, inputPeak{0}, outputPeak{0};
+    std::atomic<float> confidence{0};
     std::atomic<bool> clipped{false};
     void prepare(double newRate) {
         rate = newRate;
@@ -119,7 +138,8 @@ public:
         dryDelay.assign(size_t(latency + 1), 0);
         finalDryDelay.assign(size_t(outputLimiter.latencySamples() + 1), 0); finalDryPos = 0;
         dryPos = 0; smoothCorrection = 0; effectMix = 1; gain = 0.501187f;
-        lastTarget = -1; lastKey = lastScale = -1; midiHistory.fill(0); validHistory = historyPos = 0;
+        lastTarget = -1; lastKey = lastScale = lastMask = -1; midiHistory.fill(0); validHistory = historyPos = 0;
+        heldSamples = unvoicedSamples = 0; confidence = 0;
         detectedHz = 0; targetMidi = -1; correction = inputPeak = outputPeak = 0; clipped = false;
     }
     int latencySamples() const { return latency + outputLimiter.latencySamples(); }
@@ -127,6 +147,7 @@ public:
     // All arrays are caller-owned; dry is delayed to match the wet path.
     void process(const float* input, float* wet, float* dry, int samples) {
         float inPeak = 0, outPeak = 0;
+        detector.setRange(parameters.voiceRange.load());
         for (int offset = 0; offset < samples; offset += quantum) {
             int n = std::min(quantum, samples - offset);
             for (int i = 0; i < n; ++i) {
@@ -138,10 +159,18 @@ public:
                 dryPos = (dryPos + 1) % dryDelay.size();
                 dry[offset + i] = dryDelay[dryPos];
             }
-            double wanted = 0;
+            // Brief consonants keep the previous ratio; do not wobble back to
+            // unity at every unvoiced detector frame. Long gaps ease to unity.
+            double wanted = smoothCorrection;
             if (detector.frequency > 0 && lastTarget >= 0)
-                wanted = std::clamp(double(lastTarget) - trackedMidi, -3.0, 3.0) * parameters.amount.load();
-            const double time = std::max(1.0, double(parameters.retuneMs.load()));
+            {
+                unvoicedSamples = 0; heldSamples = std::min(heldSamples + n, int(rate));
+                wanted = std::clamp(double(lastTarget) - trackedMidi, -12.0, 12.0) * std::clamp(parameters.amount.load(), 0.0f, 1.0f);
+            } else { unvoicedSamples = std::min(unvoicedSamples + n, int(rate)); if (unvoicedSamples > rate * 0.06) wanted = 0; }
+            const double sustain = std::clamp((heldSamples / rate - 0.12) / 0.2, 0.0, 1.0);
+            const double time = detector.frequency > 0
+                ? std::max(0.1, double(parameters.retuneMs.load()) + 180 * std::clamp(parameters.humanize.load(), 0.0f, 1.0f) * sustain)
+                : 45.0;
             const double alpha = 1.0 - std::exp(-n / (rate * time * 0.001));
             smoothCorrection += alpha * (wanted - smoothCorrection);
             for (int i = 0; i < n; ++i) {
@@ -187,24 +216,28 @@ private:
     size_t finalDryPos = 0;
     std::array<double, 3> midiHistory{};
     size_t dryPos = 0;
-    int latency = 0, lastTarget = -1, lastKey = -1, lastScale = -1, validHistory = 0, historyPos = 0;
+    int latency = 0, lastTarget = -1, lastKey = -1, lastScale = -1, lastMask = -1, validHistory = 0, historyPos = 0;
+    int heldSamples = 0, unvoicedSamples = 0;
     double rate = 48000, trackedMidi = 0, smoothCorrection = 0;
     float effectMix = 1, gain = 0.5f;
     void updateTarget() {
         detectedHz = float(detector.frequency);
-        if (detector.frequency == 0) { targetMidi = -1; lastTarget = -1; validHistory = 0; return; }
+        confidence = float(detector.confidence);
+        if (detector.frequency == 0) { targetMidi = -1; lastTarget = -1; validHistory = 0; historyPos = 0; heldSamples = 0; return; }
         midiHistory[historyPos++ % 3] = midiFromHz(detector.frequency);
         validHistory = std::min(validHistory + 1, 3);
         auto sorted = midiHistory;
         std::sort(sorted.begin(), sorted.end());
         trackedMidi = validHistory == 3 ? sorted[1] : midiFromHz(detector.frequency);
         const int key = parameters.key.load(), scale = parameters.scale.load();
-        int candidate = nearestNote(trackedMidi, key, scale);
+        const int mask = parameters.noteMask.load() > 0 ? parameters.noteMask.load() : scaleMask(key, scale);
+        int candidate = nearestMaskedNote(trackedMidi, mask);
         // 12-cent hysteresis prevents toggling between equally close notes.
-        if (key == lastKey && scale == lastScale && lastTarget >= 0 && candidate != lastTarget
+        if (mask == lastMask && key == lastKey && scale == lastScale && lastTarget >= 0 && candidate != lastTarget
             && std::abs(trackedMidi - lastTarget) < std::abs(trackedMidi - candidate) + 0.12)
             candidate = lastTarget;
-        lastTarget = candidate; lastKey = key; lastScale = scale; targetMidi = float(candidate);
+        if (candidate != lastTarget) heldSamples = 0;
+        lastTarget = candidate; lastKey = key; lastScale = scale; lastMask = mask; targetMidi = float(candidate);
     }
 };
 }
