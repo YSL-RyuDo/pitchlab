@@ -4,6 +4,7 @@
 #include <fstream>
 #define PITCHLAB_EMBEDDED_TESTS
 #include "../Tests/DspTests.cpp"
+#include "../Tests/LiveStreamTests.h"
 
 namespace theme {
 const juce::Colour bg{0xff11191f}, panel{0xff202b33}, field{0xff2c3a44}, text{0xffedf3f6}, muted{0xff9cacb8};
@@ -123,6 +124,7 @@ public:
         addAndMakeVisible(keyboard);
         keyboard.onMaskChanged = [this](int mask) { audio.pitch.parameters.noteMask = mask; scale.setSelectedId(5, juce::dontSendNotification); };
         setupButton(fileButton, juce::String::fromUTF8("WAV 파일 보정")); fileButton.onClick = [this] { chooseFile(); };
+        fileButton.setTooltip(juce::String::fromUTF8("파일용 엔진으로 처리합니다. 실시간 녹음과 소리의 질감이 다를 수 있어요."));
         setupButton(diagnosticButton, juce::String::fromUTF8("진단 저장")); diagnosticButton.onClick = [this] { saveDiagnostics(); };
         historyInput.fill(-1); historyTarget.fill(-1);
         status = juce::String::fromUTF8("유선 헤드폰을 연결하고 ‘마이크 시작’을 눌러 주세요.");
@@ -165,7 +167,7 @@ public:
         g.setColour(theme::bg);
         for (int i = 0; i < 5; ++i) { float h = float(12 + (2 - std::abs(i - 2)) * 8); g.fillRoundedRectangle(float(37 + i * 5), 48 - h / 2, 3, h, 1.5f); }
         text(g, "PitchLab", 84, 21, 215, 38, 28, theme::text, true);
-        text(g, "VOCAL TUNING / 02", 87, 60, 250, 16, 10, theme::muted, true);
+        text(g, "VOCAL TUNING / 03", 87, 60, 250, 16, 10, theme::muted, true);
         text(g, "PRESET", 644, 37, 70, 23, 10, theme::muted, true);
         g.setColour(running ? theme::accent.withAlpha(0.12f) : theme::field); g.fillRoundedRectangle(951, 32, 121, 34, 17);
         text(g, running ? "LIVE" : "STANDBY", 952, 36, 120, 24, 11, running ? theme::accent : theme::muted, true, juce::Justification::centred);
@@ -209,9 +211,9 @@ public:
         card(g,28,714,1044,94);
         text(g,"IN",377,777,23,18,9,theme::muted,true); meter(g,404,783,132,displayedInput,theme::green);
         text(g,"OUT",563,777,30,18,9,theme::muted,true); meter(g,598,783,121,displayedOutput,theme::accent);
-        text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?"DSP "+juce::String(audio.maxDspMs.load(),1)+" ms / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,773,316,25,11,recording?theme::red:theme::muted);
+        text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,773,316,25,11,recording?theme::red:theme::muted);
         text(g,status,30,814,875,22,11,statusError?theme::red:theme::muted);
-        text(g,"STUDY 0.2.0",929,814,140,22,10,theme::muted,false,juce::Justification::right);
+        text(g,"STUDY 0.3.0",929,814,140,22,10,theme::muted,false,juce::Justification::right);
     }
 
 private:
@@ -301,10 +303,12 @@ private:
     }
     juce::String diagnosticText() {
         auto* device=audio.devices.getCurrentAudioDevice();
-        juce::String result="PitchLab 0.2.0 device diagnostic\n";
+        juce::String result="PitchLab 0.3.0 device diagnostic\n";
         result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
         result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
         result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
+        result+="\nDevice-reported IO latency ms: "+juce::String(audio.deviceLatencySamples.load()*1000.0/audio.currentRate.load(),2);
+        result+="\nLive engine: Signalsmith short window / 128-frame worker / 1 ms limiters";
         result+="\nStream fault: "+juce::String(audio.streamFault.load())+"\nCapture overflow: "+juce::String(audio.captureOverflows.load());
         result+="\nPlayback underrun: "+juce::String(audio.outputUnderruns.load())+"\nDSP late blocks: "+juce::String(audio.dspOverruns.load());
         result+="\nLongest DSP block ms: "+juce::String(audio.maxDspMs.load(),3)+"\nDevice xruns since start: "+juce::String(driverXruns);
@@ -430,7 +434,7 @@ int runStreamTests(std::ostream& log) {
         const float* ins[] = {input.data()}; float* outs[] = {left.data(), right.data()};
         juce::AudioIODeviceCallbackContext context;
         for (double rate : {44100., 48000.}) {
-            engine.prepareStream(rate, 512);
+            engine.prepareStream(rate, 1024);
             require(engine.ready.load() && !engine.monitoring.load(), "stream starts with monitor off");
             engine.monitoring = true; engine.monitorDb = -18;
             int supplied = 0, consumed = 0;
@@ -439,7 +443,7 @@ int runStreamTests(std::ostream& log) {
                     input[size_t(i)] = float(0.8 * std::sin(2 * pitchlab::pi * 432 * (supplied + i) / rate));
                 engine.audioDeviceIOCallbackWithContext(ins, 1, outs, 2, count, context);
                 supplied += count; if (consume) consumed += count;
-                const int expectedReady = supplied / 512 * 512 - consumed;
+                const int expectedReady = supplied / AudioEngine::processingBlockSize() * AudioEngine::processingBlockSize() - consumed;
                 const auto deadline = juce::Time::getMillisecondCounter() + 2000;
                 while (engine.bufferedOutputSamples() < expectedReady && engine.streamFault.load() == 0
                        && juce::Time::getMillisecondCounter() < deadline) juce::Thread::sleep(1);
@@ -487,6 +491,8 @@ int runSelfTest(const juce::File& folder) {
     if (!log) return 2;
     if (runDspTests(log) != 0) return 9;
     if (runStreamTests(log) != 0) return 10;
+    try { testLiveStreamLatency(log); }
+    catch (const std::exception& e) { log << "FAIL live stream: " << e.what() << '\n'; return 15; }
     try { auto panel = std::make_unique<MainComponent>(); panel->verifyControls(); log << "PASS preset/control/keyboard state without a window or audio device\n"; }
     catch (const std::exception& e) { log << "FAIL controls: " << e.what() << '\n'; return 14; }
     auto ownedEngine = std::make_unique<AudioEngine>(); auto& engine = *ownedEngine; engine.pitch.prepare(48000); engine.pitch.parameters.retuneMs = 0;
@@ -539,7 +545,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.2.0"; }
+    const juce::String getApplicationVersion() override { return "0.3.0"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if(args.size()>=2 && args[0]=="--render-ui") {
@@ -547,12 +553,14 @@ public:
             auto rendered=panel->createComponentSnapshot(panel->getLocalBounds(),true,1.0f);
             juce::File target(args[1].unquoted()); target.getParentDirectory().createDirectory();
             auto stream=target.createOutputStream(); juce::PNGImageFormat png;
+            if (stream) { stream->setPosition(0); stream->truncate(); }
             setApplicationReturnValue(stream && png.writeImageToStream(rendered,*stream)?0:12); quit(); return;
         }
-        if(args.size()>=3 && args[0]=="--render") {
+        if(args.size()>=3 && (args[0]=="--render" || args[0]=="--render-live")) {
             OfflineRenderer job;
             const int selected=args.size()>3?std::clamp(args[3].getIntValue(),0,2):0;
-            const auto error=OfflineRenderer::render(juce::File(args[1].unquoted()),juce::File(args[2].unquoted()),VocalSettings::preset(selected),job);
+            auto settings=VocalSettings::preset(selected); settings.lowLatency=args[0]=="--render-live";
+            const auto error=OfflineRenderer::render(juce::File(args[1].unquoted()),juce::File(args[2].unquoted()),settings,job);
             if(error.isNotEmpty()) juce::File(args[2].unquoted()).getChildFile("render-error.txt").replaceWithText(error);
             setApplicationReturnValue(error.isEmpty()?0:13); quit(); return;
         }

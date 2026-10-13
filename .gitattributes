@@ -7,3 +7,5 @@
 *.wav binary
 *.zip binary
 *.exe binary
+# Preserve upstream dependency snapshots and their recorded hashes.
+ThirdParty/Signalsmith/** -text -whitespace

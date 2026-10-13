@@ -1,0 +1,17 @@
+Vendored header-only dependency snapshots, used by the live microphone engine.
+
+Signalsmith Stretch
+Upstream: https://github.com/Signalsmith-Audio/signalsmith-stretch
+Header-reported version: 1.3.2
+signalsmith-stretch.h SHA256:
+45a0b93b1e00257014d48e7ae494ec4e604f56b4ee15189a355cd9794653a37d
+License: LICENSE-stretch.txt (MIT)
+
+Signalsmith Linear
+Upstream: https://github.com/Signalsmith-Audio/linear
+Commit: de55e6a50ffcf6f8f43f649692d94691c7025151
+Files: signalsmith-linear/approx.h, fft.h, linear.h, stft.h
+License: LICENSE-linear.txt (MIT)
+
+These files are included directly. Building does not fetch an unpinned current
+Signalsmith release. The disk-file engine continues to use Rubber Band.

@@ -14,10 +14,12 @@ double estimate(const std::vector<float>& data, double rate) {
     for (auto sample : data) detector.push(sample);
     return detector.frequency;
 }
+#include "LiveDspTests.h"
 int runDspTests(std::ostream& output) {
     try {
-        for (double rate : {44100., 48000., 96000.}) {
-            pitchlab::LookAheadLimiter limiter; limiter.prepare(rate, 0.5f);
+        testLiveDsp(output);
+        for (double rate : {44100., 48000., 96000.}) for (bool fast : {false, true}) {
+            pitchlab::LookAheadLimiter limiter; limiter.prepare(rate, 0.5f, fast ? 0.001 : 0.005);
             const int delay = limiter.latencySamples();
             for (int i = 0; i <= delay; ++i) {
                 float y = limiter.process(i == 0 ? 10.0f : 0.0f);
@@ -33,7 +35,7 @@ int runDspTests(std::ostream& output) {
                 float y = limiter.process(2);
                 require(std::isfinite(y) && y <= 0.500001f, "DC overload bounded");
             }
-            pitchlab::HeadphoneGuard guard; guard.prepare(rate);
+            pitchlab::HeadphoneGuard guard; guard.prepare(rate, fast);
             for (int i = 0; i < 2000; ++i) require(guard.process(1, false, -18) == 0, "monitor off is silent");
             float peak = 0;
             for (int i = 0; i < int(rate); ++i) {
@@ -48,12 +50,12 @@ int runDspTests(std::ostream& output) {
             for (int i = 0; i < delay; ++i) require(guard.process(1, true, -18) == 0, "re-enable clears delayed audio");
             require(guard.process(std::numeric_limits<float>::quiet_NaN(), true, -18) == 0 && guard.fault, "NaN latches mute");
             require(guard.process(0.5f, true, -18) == 0, "fault never resumes automatically");
-            guard.prepare(rate);
+            guard.prepare(rate, fast);
             require(guard.process(std::numeric_limits<float>::infinity(), true, -18) == 0 && guard.fault, "infinity latches mute");
-            guard.prepare(rate);
+            guard.prepare(rate, fast);
             require(guard.process(5, true, -18) == 0 && guard.fault, "invalid level latches mute");
         }
-        output << "PASS lookahead impulse, overload, headphone ceiling/fade/mute/fault latch at 44.1/48/96 kHz\n";
+        output << "PASS lookahead impulse, overload, headphone ceiling/fade/mute/fault latch at 44.1/48/96 kHz, both 1/5 ms lookahead\n";
         require(pitchlab::nearestNote(60.8, 0, 1) == 60, "C major excludes C sharp");
         require(pitchlab::nearestNote(61.7, 0, 1) == 62, "C major selects D");
         require(pitchlab::nearestNote(68.8, 9, 2) == 69, "A minor selects A");

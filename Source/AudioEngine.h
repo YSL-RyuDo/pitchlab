@@ -3,6 +3,15 @@
 #include "PitchEngine.h"
 #include "Recorder.h"
 
+// Prefer shared low-latency WASAPI without taking exclusive control of a device.
+class LiveDeviceManager : public juce::AudioDeviceManager {
+    void createAudioDeviceTypes(juce::OwnedArray<juce::AudioIODeviceType>& types) override {
+        juce::AudioDeviceManager::createAudioDeviceTypes(types);
+        for (int i = 0; i < types.size(); ++i)
+            if (types[i]->getTypeName() == "Windows Audio (Low Latency Mode)") { types.move(i,0); break; }
+    }
+};
+
 // The callback only copies bounded FIFOs and applies headphone protection.
 // Pitch detection, FFTs and recording run on the dedicated DSP worker.
 class AudioEngine : public juce::AudioIODeviceCallback, private juce::Thread {
@@ -10,11 +19,11 @@ public:
     AudioEngine() : Thread("PitchLab DSP"), inputFifo(capacity), outputFifo(capacity) {}
     pitchlab::PitchEngine pitch;
     Recorder recorder;
-    juce::AudioDeviceManager devices;
+    LiveDeviceManager devices;
     std::atomic<bool> monitoring{false}, ready{false};
     std::atomic<float> monitorDb{-36};
     std::atomic<double> currentRate{48000};
-    std::atomic<int> bufferSamples{0}, totalLatencySamples{0};
+    std::atomic<int> bufferSamples{0}, totalLatencySamples{0}, deviceLatencySamples{0};
     std::atomic<bool> deviceStopped{false};
     std::atomic<int> streamFault{0}; // 1 capture overflow, 2 playback underrun, 3 invalid output, 4 worker
     std::atomic<int> captureOverflows{0}, outputUnderruns{0}, dspOverruns{0};
@@ -23,9 +32,15 @@ public:
     ~AudioEngine() override { stop(); }
     juce::String initialiseDevices() {
         if (devices.getCurrentAudioDevice()) return {};
-        juce::AudioDeviceManager::AudioDeviceSetup options;
-        options.sampleRate = 48000; options.bufferSize = 512;
-        return devices.initialise(1, 2, nullptr, true, {}, &options);
+        auto options = devices.getAudioDeviceSetup();
+        const bool firstStart = options.inputDeviceName.isEmpty() && options.outputDeviceName.isEmpty();
+        if (firstStart) { options.sampleRate = 48000; options.bufferSize = 128; }
+        auto error = devices.initialise(1, 2, nullptr, true, {}, &options);
+        if (error.isNotEmpty() && firstStart && devices.getCurrentAudioDeviceType() == "Windows Audio (Low Latency Mode)") {
+            devices.setCurrentAudioDeviceType("Windows Audio", false);
+            error = devices.initialise(1, 2, nullptr, true, {}, &options);
+        }
+        return error;
     }
     juce::String start() {
         auto error = initialiseDevices();
@@ -50,10 +65,10 @@ public:
     }
     void prepareStream(double rate, int deviceBuffer) {
         stopWorker();
-        currentRate = rate; bufferSamples = deviceBuffer;
-        pitch.prepare(rate); headphone.prepare(rate);
-        inputFifo.reset(); outputFifo.reset(); primed = false;
-        reserve = std::clamp(std::max(2048, deviceBuffer * 3), 2048, capacity / 2);
+        currentRate = rate; bufferSamples = deviceBuffer; deviceLatencySamples = 0;
+        pitch.prepare(rate, true); headphone.prepare(rate, true);
+        inputFifo.reset(); outputFifo.reset(); primed = false; primingSamples = 0;
+        reserve = std::clamp(std::max(256, deviceBuffer * 2), 256, capacity / 2);
         totalLatencySamples = pitch.latencySamples() + reserve + headphone.latencySamples();
         streamFault = 0; monitoring = false;
         captureOverflows = 0; outputUnderruns = 0; dspOverruns = 0; maxDspMs = 0; processedSamples = 0;
@@ -63,11 +78,14 @@ public:
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override {
         if (recorder.isRecording()) { ready = false; deviceStopped = true; return; }
         prepareStream(device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
-        totalLatencySamples.fetch_add(device->getInputLatencyInSamples() + device->getOutputLatencyInSamples());
+        deviceLatencySamples = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples();
+        totalLatencySamples.fetch_add(deviceLatencySamples.load());
     }
     void audioDeviceStopped() override { ready = false; deviceStopped = true; stopWorker(); }
     void audioDeviceError(const juce::String&) override { ready = false; deviceStopped = true; }
     int bufferedOutputSamples() const { return outputFifo.getNumReady(); }
+    int startupBufferSamples() const { return reserve; }
+    static constexpr int processingBlockSize() { return chunkSize; }
     void audioDeviceIOCallbackWithContext(const float* const* input, int inputChannels,
         float* const* output, int outputChannels, int count, const juce::AudioIODeviceCallbackContext&) override {
         juce::ScopedNoDenormals noDenormals;
@@ -76,6 +94,7 @@ public:
                 if (output[ch]) std::fill(output[ch], output[ch] + count, 0.0f);
         };
         if (!ready.load() || streamFault.load() != 0) { silence(); return; }
+        const bool needsPriming = !primed && outputFifo.getNumReady() < reserve;
         const float* mic = nullptr;
         for (int ch = 0; ch < inputChannels; ++ch) if (input[ch]) { mic = input[ch]; break; }
         if (inputFifo.getFreeSpace() < count) { fail(1); silence(); return; }
@@ -88,8 +107,11 @@ public:
         for (int i = 0; i < n2; ++i) capture[size_t(b + i)] = mic ? mic[n1 + i] : 0;
         inputFifo.finishedWrite(n1 + n2); notify();
         if (!primed) {
-            if (outputFifo.getNumReady() < reserve) { silence(); return; }
+            if (needsPriming) { primingSamples += count; silence(); return; }
             primed = true;
+            // Use the actual startup delay, including a late worker wake-up,
+            // instead of continuing to display the requested minimum reserve.
+            totalLatencySamples.fetch_add(primingSamples - reserve);
         }
         if (outputFifo.getNumReady() < count) { fail(2); silence(); return; }
         outputFifo.prepareToRead(count, a, n1, b, n2);
@@ -103,13 +125,13 @@ public:
         outputFifo.finishedRead(n1 + n2);
     }
 private:
-    static constexpr int chunkSize = 512, capacity = 32768;
+    static constexpr int chunkSize = 128, capacity = 32768;
     juce::AbstractFifo inputFifo, outputFifo;
     std::array<float, capacity> capture{}, playback{};
     std::array<float, chunkSize> source{}, wet{}, dry{};
     pitchlab::HeadphoneGuard headphone;
     bool attached = false, primed = false;
-    int reserve = 2048;
+    int reserve = 256, primingSamples = 0;
     void fail(int code) {
         if (code == 1) ++captureOverflows;
         if (code == 2) ++outputUnderruns;

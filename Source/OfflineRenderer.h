@@ -6,6 +6,7 @@ struct VocalSettings {
     int key = 0, scale = 0, mask = 0, range = 0;
     float speed = 12, amount = 1, humanize = 0;
     bool formants = true, enabled = true;
+    bool lowLatency = false;
     static VocalSettings capture(const pitchlab::Parameters& p) {
         return {p.key.load(), p.scale.load(), p.noteMask.load(), p.voiceRange.load(),
                 p.retuneMs.load(), p.amount.load(), p.humanize.load(), p.preserveFormants.load(), p.enabled.load()};
@@ -63,7 +64,7 @@ public:
         if (!wetStream || !dryStream) return juce::String::fromUTF8("출력 파일을 만들지 못했어요.");
         auto wetWriter = format.createWriterFor(wetStream, options), dryWriter = format.createWriterFor(dryStream, options);
         if (!wetWriter || !dryWriter) return juce::String::fromUTF8("WAV 저장을 시작하지 못했어요.");
-        pitchlab::PitchEngine engine; engine.prepare(rate); settings.apply(engine.parameters);
+        pitchlab::PitchEngine engine; engine.prepare(rate, settings.lowLatency); settings.apply(engine.parameters);
         constexpr int block = 512;
         juce::AudioBuffer<float> readBuffer(int(reader->numChannels), block);
         std::array<float, block> input{}, wet{}, dry{};
@@ -103,7 +104,7 @@ public:
         }
         if (!wetWriter->flush() || !dryWriter->flush() || written != length) return "WAV finalisation failed";
         wetWriter.reset(); dryWriter.reset();
-        juce::String report = "PitchLab 0.2.0 offline render\nNo audio device opened. No playback.\n";
+        juce::String report = "PitchLab 0.3.0 offline render\nNo audio device opened. No playback.\n";
         report += "Sample rate: " + juce::String(rate) + "\nInput/output frames: " + juce::String(length) + "/" + juce::String(written);
         report += "\nLatency trimmed: " + juce::String(latency) + " samples\nPeak: " + juce::String(peak, 6);
         report += "\nMaximum adjacent sample change: " + juce::String(maxStep, 6);
@@ -113,6 +114,7 @@ public:
         report += "\nRetune ms: " + juce::String(settings.speed) + "\nAmount: " + juce::String(settings.amount) + "\nHumanize: " + juce::String(settings.humanize);
         report += "\nVoice range: " + juce::String(settings.range) + "\nKey: " + juce::String(settings.key) + "\nScale: " + juce::String(settings.scale) + "\nNote mask: " + juce::String(settings.mask);
         report += "\nFormants: " + juce::String(int(settings.formants)) + "\nEffect enabled: " + juce::String(int(settings.enabled)) + "\nListening quality has NOT been verified.\n";
+        report += "Engine: " + juce::String(settings.lowLatency ? "Live / Signalsmith short window" : "File / Rubber Band") + "\n";
         if (!job.reportFile.replaceWithText(report)) return "Report write failed";
         return {};
     }

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 #include "OutputGuard.h"
+#include "../ThirdParty/Signalsmith/signalsmith-stretch.h"
 
 namespace pitchlab {
 constexpr double pi = 3.14159265358979323846;
@@ -49,7 +50,8 @@ inline int nearestMaskedNote(double midi, int mask) {
 // all allocation outside the audio callback. Unvoiced sound returns 0 Hz.
 class PitchDetector {
 public:
-    void prepare(double rate) {
+    void prepare(double rate, bool fastTracking = false) {
+        windowSize = fastTracking ? 768 : size;
         decimation = std::max(1, int(std::round(rate / 24000.0)));
         dsRate = rate / decimation;
         lowPass = 1.0 - std::exp(-2.0 * pi * 3000.0 / rate);
@@ -61,25 +63,26 @@ public:
         lp1 += lowPass * (x - lp1); lp2 += lowPass * (lp1 - lp2);
         if (++decCount < decimation) return false;
         decCount = 0;
-        ring[pos] = float(lp2); pos = (pos + 1) % size;
-        count = std::min(size, count + 1);
-        if (++hop < 128 || count < size) return false;
+        ring[pos] = float(lp2); pos = (pos + 1) % windowSize;
+        count = std::min(windowSize, count + 1);
+        if (++hop < 128 || count < windowSize) return false;
         hop = 0; analyse(); return true;
     }
     double frequency = 0, confidence = 0;
     void setRange(int range) { minHz = range == 2 ? 130 : 65; maxHz = range == 1 ? 400 : 1000; }
 private:
     static constexpr int size = 1024;
+    int windowSize = size;
     std::array<float, size> ring{}, frame{}, difference{};
     int pos = 0, count = 0, hop = 0, decCount = 0, decimation = 2;
     double dsRate = 24000, lp1 = 0, lp2 = 0, lowPass = 0.3, minHz = 65, maxHz = 1000;
     void analyse() {
         double energy = 0;
-        for (int i = 0; i < size; ++i) { frame[i] = ring[(pos + i) % size]; energy += frame[i] * frame[i]; }
-        if (energy / size < 0.0000158) { frequency = confidence = 0; return; }
-        const int maxLag = std::min(size / 2 - 1, int(dsRate / minHz));
+        for (int i = 0; i < windowSize; ++i) { frame[i] = ring[(pos + i) % windowSize]; energy += frame[i] * frame[i]; }
+        if (energy / windowSize < 0.0000158) { frequency = confidence = 0; return; }
+        const int maxLag = std::min(windowSize / 2 - 1, int(dsRate / minHz));
         const int minLag = std::max(2, int(dsRate / maxHz));
-        const int length = size - maxLag;
+        const int length = windowSize - maxLag;
         double accumulated = 0;
         difference[0] = 1;
         for (int lag = 1; lag <= maxLag; ++lag) {
@@ -125,16 +128,28 @@ public:
     std::atomic<float> detectedHz{0}, targetMidi{-1}, correction{0}, inputPeak{0}, outputPeak{0};
     std::atomic<float> confidence{0};
     std::atomic<bool> clipped{false};
-    void prepare(double newRate) {
+    void prepare(double newRate, bool useLowLatency = false) {
         rate = newRate;
-        detector.prepare(rate);
-        shifter = std::make_unique<RubberBand::RubberBandLiveShifter>(size_t(rate), 1,
+        lowLatency = useLowLatency;
+        detector.prepare(rate, lowLatency);
+        if (lowLatency) {
+            liveShifter = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>(42);
+            const int window = std::max(384, int(std::round(rate * 0.022 / 32)) * 32);
+            const int hop = std::max(32, int(std::round(rate * (64.0 / 48000) / 32)) * 32);
+            liveShifter->configure(1, window, hop, false);
+            liveShifter->setFormantBase(float(220 / rate));
+            latency = liveShifter->inputLatency() + liveShifter->outputLatency();
+            shifter.reset();
+        } else {
+            liveShifter.reset();
+            shifter = std::make_unique<RubberBand::RubberBandLiveShifter>(size_t(rate), 1,
             RubberBand::RubberBandLiveShifter::OptionWindowShort | RubberBand::RubberBandLiveShifter::OptionFormantPreserved);
-        shiftSize = int(shifter->getBlockSize()); shiftPos = 0;
-        shiftInput.assign(size_t(shiftSize), 0); shiftOutput.assign(size_t(shiftSize), 0);
+            shiftSize = int(shifter->getBlockSize()); shiftPos = 0;
+            shiftInput.assign(size_t(shiftSize), 0); shiftOutput.assign(size_t(shiftSize), 0);
+            latency = int(shifter->getStartDelay()) + shiftSize;
+        }
         // The fixed-block adapter adds one block to the shifter's stated delay.
-        outputLimiter.prepare(rate, 0.5f);
-        latency = int(shifter->getStartDelay()) + shiftSize;
+        outputLimiter.prepare(rate, 0.5f, lowLatency ? 0.001 : 0.005);
         dryDelay.assign(size_t(latency + 1), 0);
         finalDryDelay.assign(size_t(outputLimiter.latencySamples() + 1), 0); finalDryPos = 0;
         dryPos = 0; smoothCorrection = 0; effectMix = 1; gain = 0.501187f;
@@ -144,6 +159,7 @@ public:
     }
     int latencySamples() const { return latency + outputLimiter.latencySamples(); }
     double sampleRate() const { return rate; }
+    bool isLowLatency() const { return lowLatency; }
     // All arrays are caller-owned; dry is delayed to match the wet path.
     void process(const float* input, float* wet, float* dry, int samples) {
         float inPeak = 0, outPeak = 0;
@@ -173,7 +189,13 @@ public:
                 : 45.0;
             const double alpha = 1.0 - std::exp(-n / (rate * time * 0.001));
             smoothCorrection += alpha * (wanted - smoothCorrection);
-            for (int i = 0; i < n; ++i) {
+            if (lowLatency) {
+                liveShifter->setTransposeFactor(float(std::pow(2.0, smoothCorrection / 12.0)));
+                liveShifter->setFormantFactor(1, parameters.preserveFormants.load());
+                if (detector.frequency > 0) liveShifter->setFormantBase(float(detector.frequency / rate));
+                const float* ins[] = {blockIn.data()}; float* outs[] = {blockOut.data()};
+                liveShifter->process(ins, n, outs, n);
+            } else for (int i = 0; i < n; ++i) {
                 blockOut[i] = shiftOutput[size_t(shiftPos)];
                 shiftInput[size_t(shiftPos)] = blockIn[i];
                 if (++shiftPos == shiftSize) {
@@ -207,6 +229,8 @@ private:
     static constexpr int quantum = 128;
     PitchDetector detector;
     std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
+    std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>> liveShifter;
+    bool lowLatency = false;
     LookAheadLimiter outputLimiter;
     std::vector<float> shiftInput, shiftOutput;
     int shiftSize = 512, shiftPos = 0;
