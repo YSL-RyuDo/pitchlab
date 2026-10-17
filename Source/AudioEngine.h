@@ -21,7 +21,7 @@ public:
     Recorder recorder;
     LiveDeviceManager devices;
     std::atomic<bool> monitoring{false}, ready{false};
-    std::atomic<float> monitorDb{-36};
+    std::atomic<float> monitorDb{pitchlab::HeadphoneGuard::defaultDb}, monitorPeak{0};
     std::atomic<double> currentRate{48000};
     std::atomic<int> bufferSamples{0}, totalLatencySamples{0}, deviceLatencySamples{0};
     std::atomic<bool> deviceStopped{false};
@@ -59,7 +59,7 @@ public:
         return {};
     }
     void stop() {
-        monitoring = false;
+        monitoring = false; monitorPeak = 0;
         if (attached) { devices.removeAudioCallback(this); attached = false; }
         stopWorker(); recorder.stop(); devices.closeAudioDevice(); ready = false;
     }
@@ -70,7 +70,7 @@ public:
         inputFifo.reset(); outputFifo.reset(); primed = false; primingSamples = 0;
         reserve = std::clamp(std::max(256, deviceBuffer * 2), 256, capacity / 2);
         totalLatencySamples = pitch.latencySamples() + reserve + headphone.latencySamples();
-        streamFault = 0; monitoring = false;
+        streamFault = 0; monitoring = false; monitorPeak = 0;
         captureOverflows = 0; outputUnderruns = 0; dspOverruns = 0; maxDspMs = 0; processedSamples = 0;
         ready = startThread(juce::Thread::Priority::high);
         if (!ready.load()) streamFault = 4;
@@ -90,6 +90,7 @@ public:
         float* const* output, int outputChannels, int count, const juce::AudioIODeviceCallbackContext&) override {
         juce::ScopedNoDenormals noDenormals;
         auto silence = [&] {
+            monitorPeak = 0;
             for (int ch = 0; ch < outputChannels; ++ch)
                 if (output[ch]) std::fill(output[ch], output[ch] + count, 0.0f);
         };
@@ -116,13 +117,16 @@ public:
         if (outputFifo.getNumReady() < count) { fail(2); silence(); return; }
         outputFifo.prepareToRead(count, a, n1, b, n2);
         const bool listen = monitoring.load(); const float volume = monitorDb.load();
+        float peak = 0;
         for (int i = 0; i < count; ++i) {
             const float sample = playback[size_t(i < n1 ? a + i : b + i - n1)];
             float y = headphone.process(sample, listen, volume);
             if (headphone.fault) { fail(3); y = 0; }
+            peak = std::max(peak, std::abs(y));
             for (int ch = 0; ch < outputChannels; ++ch) if (output[ch]) output[ch][i] = y;
         }
         outputFifo.finishedRead(n1 + n2);
+        monitorPeak = peak;
     }
 private:
     static constexpr int chunkSize = 128, capacity = 32768;

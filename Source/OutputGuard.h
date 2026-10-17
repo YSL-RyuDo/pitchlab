@@ -54,27 +54,30 @@ private:
 
 class HeadphoneGuard {
 public:
+    static constexpr float defaultDb = 0, minimumDb = -60, maximumDb = 24;
     static constexpr float peakCeiling = 0.03f; // -30.46 dBFS; not an acoustic SPL guarantee
     void prepare(double rate, bool lowLatency = false) {
         limiter.prepare(rate, peakCeiling, lowLatency ? 0.001 : 0.005); rampStep = float(1 / (rate * 0.25));
         ramp = 0; wasEnabled = false; fault = false;
+        volumeGain = 0; gainStep = float(1 - std::exp(-1 / (rate * 0.02)));
     }
     int latencySamples() const { return limiter.latencySamples(); }
     float process(float input, bool enabled, float volumeDb) {
         if (!std::isfinite(input) || std::abs(input) > 4 || !std::isfinite(volumeDb)) fault = true;
         if (!enabled || fault) {
             if (wasEnabled) limiter.reset();
-            wasEnabled = false; ramp = 0; return 0; // mute must be immediate
+            wasEnabled = false; ramp = 0; volumeGain = 0; return 0; // mute must be immediate
         }
         wasEnabled = true;
         ramp = std::min(1.0f, ramp + rampStep);
-        const float gain = std::pow(10.0f, std::clamp(volumeDb, -60.0f, -18.0f) / 20);
-        return limiter.process(input * gain * ramp);
+        const float gain = std::pow(10.0f, std::clamp(volumeDb, minimumDb, maximumDb) / 20);
+        volumeGain += gainStep * (gain - volumeGain);
+        return limiter.process(input * volumeGain * ramp);
     }
     bool fault = false;
 private:
     LookAheadLimiter limiter;
-    float ramp = 0, rampStep = 0;
+    float ramp = 0, rampStep = 0, volumeGain = 0, gainStep = 0;
     bool wasEnabled = false;
 };
 }

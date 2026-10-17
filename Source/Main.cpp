@@ -78,13 +78,23 @@ public:
         addAndMakeVisible(key); addAndMakeVisible(scale);
         setupSlider(speed, 0, 150, 1, 12, " ms", juce::String::fromUTF8("보정 속도"));
         setupSlider(amount, 0, 100, 1, 100, "%", juce::String::fromUTF8("보정 강도"));
-        setupSlider(volume, -60, -18, 1, -36, " dB", juce::String::fromUTF8("헤드폰 음량"));
+        setupSlider(volume, pitchlab::HeadphoneGuard::minimumDb, pitchlab::HeadphoneGuard::maximumDb, 1,
+                    pitchlab::HeadphoneGuard::defaultDb, " dB", juce::String::fromUTF8("헤드폰 음량"));
         key.onChange = [this] { updateScale(); };
         scale.onChange = [this] { updateScale(); };
         speed.onValueChange = [this] { audio.pitch.parameters.retuneMs = float(speed.getValue()); markCustom(); };
         amount.onValueChange = [this] { audio.pitch.parameters.amount = float(amount.getValue() / 100); markCustom(); };
         volume.onValueChange = [this] { audio.monitorDb = float(volume.getValue()); };
-        monitor.onClick = [this] { audio.monitoring = monitor.getToggleState(); };
+        monitor.onClick = [this] {
+            audio.monitoring = monitor.getToggleState() && running && audio.streamFault.load() == 0;
+            monitor.setToggleState(audio.monitoring.load(), juce::dontSendNotification);
+            if (running) {
+                statusError = false;
+                status = audio.monitoring.load()
+                    ? juce::String::fromUTF8("듣기 켬 · ") + audio.devices.getAudioDeviceSetup().outputDeviceName
+                    : juce::String::fromUTF8("듣기 끔 · 녹음에는 영향을 주지 않아요.");
+            }
+        };
         bypass.onClick = [this] { audio.pitch.parameters.enabled = bypass.getToggleState(); };
         formants.onClick = [this] { audio.pitch.parameters.preserveFormants = formants.getToggleState(); };
         startButton.onClick = [this] { toggleAudio(); };
@@ -106,6 +116,7 @@ public:
         };
         speed.setTooltip(juce::String::fromUTF8("숫자가 작을수록 목표 음에 빨리 붙습니다. 0–15 ms: 강한 효과, 50–100 ms: 부드러운 보정."));
         monitor.setTooltip(juce::String::fromUTF8("유선 헤드폰을 연결한 뒤 켜 주세요. 녹음은 듣기 설정과 관계없이 저장됩니다."));
+        volume.setTooltip(juce::String::fromUTF8("0 dB는 보정음을 그대로 듣는 크기입니다. 작으면 +6, +12 dB 순서로 올려 보세요. 출력 상한은 유지되며 녹음 음량에는 영향을 주지 않습니다."));
         bypass.setTooltip(juce::String::fromUTF8("끄면 보정하지 않은 소리를 출력합니다. 전환은 부드럽게 이어집니다."));
         recordButton.setEnabled(false); monitor.setEnabled(false);
         setupSlider(humanize, 0, 100, 1, 65, "%", juce::String::fromUTF8("긴 음의 흔들림 유지"));
@@ -140,7 +151,11 @@ public:
         require(std::abs(audio.pitch.parameters.humanize.load()-0.65f)<0.001f && audio.pitch.parameters.retuneMs.load()==45, "initial preset reaches DSP even when slider value is unchanged");
         preset.setSelectedId(3,juce::sendNotificationSync);
         require(audio.pitch.parameters.retuneMs.load()==0 && audio.pitch.parameters.humanize.load()==0, "Hard tune preset reaches DSP");
-        require(!audio.monitoring.load() && audio.monitorDb.load()==-36, "preset never enables or raises monitor");
+        require(!audio.monitoring.load() && audio.monitorDb.load()==0, "preset leaves monitor off at unity gain");
+        volume.setValue(12, juce::sendNotificationSync);
+        require(audio.monitorDb.load()==12 && !audio.monitoring.load(), "monitor boost control does not enable playback");
+        preset.setSelectedId(1, juce::sendNotificationSync);
+        require(audio.monitorDb.load()==12, "tone preset preserves monitor gain");
         speed.setValue(23,juce::sendNotificationSync);
         require(preset.getSelectedId()==4 && audio.pitch.parameters.retuneMs.load()==23, "manual editing marks Custom");
         scale.setSelectedId(2,juce::sendNotificationSync);
@@ -211,10 +226,10 @@ public:
         text(g,juce::String::fromUTF8("초록 표시 = 보정에 사용할 음"),800,645,244,24,11,theme::muted);
         card(g,28,714,1044,94);
         text(g,"IN",377,777,23,18,9,theme::muted,true); meter(g,404,783,132,displayedInput,theme::green);
-        text(g,"OUT",563,777,30,18,9,theme::muted,true); meter(g,598,783,121,displayedOutput,theme::accent);
+        text(g,"PHONES",551,777,44,18,9,theme::muted,true); meter(g,598,783,121,displayedOutput,theme::accent);
         text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,773,316,25,11,recording?theme::red:theme::muted);
         text(g,status,30,814,875,22,11,statusError?theme::red:theme::muted);
-        text(g,"STUDY 0.3.1",929,814,140,22,10,theme::muted,false,juce::Justification::right);
+        text(g,"STUDY 0.3.2",929,814,140,22,10,theme::muted,false,juce::Justification::right);
     }
 
 private:
@@ -304,7 +319,7 @@ private:
     }
     juce::String diagnosticText() {
         auto* device=audio.devices.getCurrentAudioDevice();
-        juce::String result="PitchLab 0.3.1 device diagnostic\n";
+        juce::String result="PitchLab 0.3.2 device diagnostic\n";
         result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
         result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
         result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
@@ -314,6 +329,7 @@ private:
         result+="\nPlayback underrun: "+juce::String(audio.outputUnderruns.load())+"\nDSP late blocks: "+juce::String(audio.dspOverruns.load());
         result+="\nLongest DSP block ms: "+juce::String(audio.maxDspMs.load(),3)+"\nDevice xruns since start: "+juce::String(driverXruns);
         result+="\nProcessed frames: "+juce::String(audio.processedSamples.load())+"\nMonitoring: "+juce::String(int(audio.monitoring.load()));
+        result+="\nMonitor gain dB: "+juce::String(audio.monitorDb.load())+"\nPost-guard monitor peak: "+juce::String(audio.monitorPeak.load(),6);
         result+="\nCurrent device open: "+juce::String(int(device!=nullptr))+"\nNo microphone audio included.\n";
         return result;
     }
@@ -420,7 +436,7 @@ private:
         historyTarget[historyPos] = running ? audio.pitch.targetMidi.load() : -1;
         historyPos = (historyPos + 1) % 160;
         displayedInput = std::max(displayedInput * 0.85f, running ? audio.pitch.inputPeak.load() : 0);
-        displayedOutput = std::max(displayedOutput * 0.85f, running ? audio.pitch.outputPeak.load() : 0);
+        displayedOutput = running && audio.monitoring.load() ? std::max(displayedOutput * 0.85f, audio.monitorPeak.load()) : 0;
         if (audio.pitch.clipped.exchange(false)) clipFrames = 45; else clipFrames = std::max(0, clipFrames - 1);
         if (deviceWindow) updateDeviceDescription();
         repaint();
@@ -494,7 +510,7 @@ int runSelfTest(const juce::File& folder) {
     try { testWasapiFormats(log); }
     catch (const std::exception& e) { log << "FAIL WASAPI format: " << e.what() << '\n'; return 16; }
     if (runStreamTests(log) != 0) return 10;
-    try { testLiveStreamLatency(log); }
+    try { testLiveStreamLatency(log); testQuietMonitorStream(log); }
     catch (const std::exception& e) { log << "FAIL live stream: " << e.what() << '\n'; return 15; }
     try { auto panel = std::make_unique<MainComponent>(); panel->verifyControls(); log << "PASS preset/control/keyboard state without a window or audio device\n"; }
     catch (const std::exception& e) { log << "FAIL controls: " << e.what() << '\n'; return 14; }
@@ -548,7 +564,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.3.1"; }
+    const juce::String getApplicationVersion() override { return "0.3.2"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if(args.size()>=2 && args[0]=="--render-ui") {

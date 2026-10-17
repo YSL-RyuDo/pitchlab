@@ -1,60 +1,66 @@
-LIVE rate=44100 formants=0 input=67 output=66.1115 cents=18.564 engine_ms=22.7891 max_block_ms=0.3662
-LIVE rate=44100 formants=0 input=75 output=74.1116 cents=16.3215 engine_ms=22.7891 max_block_ms=0.3769
-LIVE rate=44100 formants=0 input=90 output=91.899 cents=-11.2592 engine_ms=22.7891 max_block_ms=0.1539
-LIVE rate=44100 formants=0 input=140 output=139.179 cents=7.3226 engine_ms=22.7891 max_block_ms=0.1475
-LIVE rate=44100 formants=0 input=213 output=209.809 cents=17.8879 engine_ms=22.7891 max_block_ms=0.1663
-LIVE rate=44100 formants=0 input=432 output=440.05 cents=0.198054 engine_ms=22.7891 max_block_ms=0.2945
-LIVE rate=44100 formants=0 input=452 output=442.366 cents=9.28353 engine_ms=22.7891 max_block_ms=0.3638
-LIVE rate=44100 formants=0 input=865 output=880.112 cents=0.220961 engine_ms=22.7891 max_block_ms=0.3062
-LIVE rate=44100 formants=0 input=987 output=987.749 cents=-0.0300261 engine_ms=22.7891 max_block_ms=0.1708
-LIVE rate=44100 formants=1 input=67 output=66.3116 cents=23.7967 engine_ms=22.7891 max_block_ms=0.4274
-LIVE rate=44100 formants=1 input=75 output=74.2936 cents=20.5684 engine_ms=22.7891 max_block_ms=0.2384
-LIVE rate=44100 formants=1 input=90 output=91.918 cents=-10.9006 engine_ms=22.7891 max_block_ms=0.3802
-LIVE rate=44100 formants=1 input=140 output=139.2 cents=7.58428 engine_ms=22.7891 max_block_ms=0.2033
-LIVE rate=44100 formants=1 input=213 output=209.88 cents=18.4742 engine_ms=22.7891 max_block_ms=0.1526
-LIVE rate=44100 formants=1 input=432 output=440.12 cents=0.470861 engine_ms=22.7891 max_block_ms=0.465
-LIVE rate=44100 formants=1 input=452 output=442.317 cents=9.0941 engine_ms=22.7891 max_block_ms=0.4854
-LIVE rate=44100 formants=1 input=865 output=880.236 cents=0.463579 engine_ms=22.7891 max_block_ms=0.2121
-LIVE rate=44100 formants=1 input=987 output=987.749 cents=-0.0300367 engine_ms=22.7891 max_block_ms=0.5239
+LIVE rate=44100 formants=0 input=67 output=66.1115 cents=18.564 engine_ms=22.7891 max_block_ms=0.4265
+LIVE rate=44100 formants=0 input=75 output=74.1116 cents=16.3215 engine_ms=22.7891 max_block_ms=0.4189
+LIVE rate=44100 formants=0 input=90 output=91.899 cents=-11.2592 engine_ms=22.7891 max_block_ms=0.3798
+LIVE rate=44100 formants=0 input=140 output=139.179 cents=7.3226 engine_ms=22.7891 max_block_ms=0.4858
+LIVE rate=44100 formants=0 input=213 output=209.809 cents=17.8879 engine_ms=22.7891 max_block_ms=0.3493
+LIVE rate=44100 formants=0 input=432 output=440.05 cents=0.198054 engine_ms=22.7891 max_block_ms=0.5401
+LIVE rate=44100 formants=0 input=452 output=442.366 cents=9.28353 engine_ms=22.7891 max_block_ms=0.1455
+LIVE rate=44100 formants=0 input=865 output=880.112 cents=0.220961 engine_ms=22.7891 max_block_ms=0.1455
+LIVE rate=44100 formants=0 input=987 output=987.749 cents=-0.0300261 engine_ms=22.7891 max_block_ms=0.373
+LIVE rate=44100 formants=1 input=67 output=66.3116 cents=23.7967 engine_ms=22.7891 max_block_ms=0.4073
+LIVE rate=44100 formants=1 input=75 output=74.2936 cents=20.5684 engine_ms=22.7891 max_block_ms=0.3223
+LIVE rate=44100 formants=1 input=90 output=91.918 cents=-10.9006 engine_ms=22.7891 max_block_ms=0.1731
+LIVE rate=44100 formants=1 input=140 output=139.2 cents=7.58428 engine_ms=22.7891 max_block_ms=0.3607
+LIVE rate=44100 formants=1 input=213 output=209.88 cents=18.4742 engine_ms=22.7891 max_block_ms=0.1619
+LIVE rate=44100 formants=1 input=432 output=440.12 cents=0.470861 engine_ms=22.7891 max_block_ms=0.4895
+LIVE rate=44100 formants=1 input=452 output=442.317 cents=9.0941 engine_ms=22.7891 max_block_ms=0.4523
+LIVE rate=44100 formants=1 input=865 output=880.236 cents=0.463579 engine_ms=22.7891 max_block_ms=0.4697
+LIVE rate=44100 formants=1 input=987 output=987.749 cents=-0.0300367 engine_ms=22.7891 max_block_ms=0.4252
 PASS live impulse latency measured=22.7891 ms at 44100 Hz
-LIVE rate=48000 formants=0 input=67 output=65.936 cents=13.9625 engine_ms=23 max_block_ms=0.2107
-LIVE rate=48000 formants=0 input=75 output=73.9366 cents=12.2277 engine_ms=23 max_block_ms=0.3847
-LIVE rate=48000 formants=0 input=90 output=91.8403 cents=-12.365 engine_ms=23 max_block_ms=0.4383
-LIVE rate=48000 formants=0 input=140 output=139.092 cents=6.24063 engine_ms=23 max_block_ms=0.4315
-LIVE rate=48000 formants=0 input=213 output=209.551 cents=15.7565 engine_ms=23 max_block_ms=0.4934
-LIVE rate=48000 formants=0 input=432 output=439.867 cents=-0.524044 engine_ms=23 max_block_ms=0.3426
-LIVE rate=48000 formants=0 input=452 output=441.638 cents=6.43466 engine_ms=23 max_block_ms=0.4817
-LIVE rate=48000 formants=0 input=865 output=879.172 cents=-1.63017 engine_ms=23 max_block_ms=0.4417
-LIVE rate=48000 formants=0 input=987 output=987.759 cents=-0.0138557 engine_ms=23 max_block_ms=0.5096
-LIVE rate=48000 formants=1 input=67 output=66.1157 cents=18.6724 engine_ms=23 max_block_ms=0.4582
-LIVE rate=48000 formants=1 input=75 output=74.1413 cents=17.0149 engine_ms=23 max_block_ms=0.2999
-LIVE rate=48000 formants=1 input=90 output=91.8594 cents=-12.0052 engine_ms=23 max_block_ms=0.4568
-LIVE rate=48000 formants=1 input=140 output=139.113 cents=6.49957 engine_ms=23 max_block_ms=0.3013
-LIVE rate=48000 formants=1 input=213 output=209.624 cents=16.3588 engine_ms=23 max_block_ms=0.2464
-LIVE rate=48000 formants=1 input=432 output=439.904 cents=-0.375857 engine_ms=23 max_block_ms=0.468
-LIVE rate=48000 formants=1 input=452 output=441.664 cents=6.53324 engine_ms=23 max_block_ms=0.3282
-LIVE rate=48000 formants=1 input=865 output=879.343 cents=-1.29391 engine_ms=23 max_block_ms=0.2485
-LIVE rate=48000 formants=1 input=987 output=987.759 cents=-0.0138633 engine_ms=23 max_block_ms=0.2715
+LIVE rate=48000 formants=0 input=67 output=65.936 cents=13.9625 engine_ms=23 max_block_ms=0.4902
+LIVE rate=48000 formants=0 input=75 output=73.9366 cents=12.2277 engine_ms=23 max_block_ms=0.1871
+LIVE rate=48000 formants=0 input=90 output=91.8403 cents=-12.365 engine_ms=23 max_block_ms=0.3958
+LIVE rate=48000 formants=0 input=140 output=139.092 cents=6.24063 engine_ms=23 max_block_ms=0.2539
+LIVE rate=48000 formants=0 input=213 output=209.551 cents=15.7565 engine_ms=23 max_block_ms=0.1937
+LIVE rate=48000 formants=0 input=432 output=439.867 cents=-0.524044 engine_ms=23 max_block_ms=0.4862
+LIVE rate=48000 formants=0 input=452 output=441.638 cents=6.43466 engine_ms=23 max_block_ms=0.24
+LIVE rate=48000 formants=0 input=865 output=879.172 cents=-1.63017 engine_ms=23 max_block_ms=0.3953
+LIVE rate=48000 formants=0 input=987 output=987.759 cents=-0.0138557 engine_ms=23 max_block_ms=0.4688
+LIVE rate=48000 formants=1 input=67 output=66.1157 cents=18.6724 engine_ms=23 max_block_ms=0.2749
+LIVE rate=48000 formants=1 input=75 output=74.1413 cents=17.0149 engine_ms=23 max_block_ms=0.4203
+LIVE rate=48000 formants=1 input=90 output=91.8594 cents=-12.0052 engine_ms=23 max_block_ms=0.5804
+LIVE rate=48000 formants=1 input=140 output=139.113 cents=6.49957 engine_ms=23 max_block_ms=0.5073
+LIVE rate=48000 formants=1 input=213 output=209.624 cents=16.3588 engine_ms=23 max_block_ms=0.4815
+LIVE rate=48000 formants=1 input=432 output=439.904 cents=-0.375857 engine_ms=23 max_block_ms=0.4745
+LIVE rate=48000 formants=1 input=452 output=441.664 cents=6.53324 engine_ms=23 max_block_ms=0.3932
+LIVE rate=48000 formants=1 input=865 output=879.343 cents=-1.29391 engine_ms=23 max_block_ms=0.4396
+LIVE rate=48000 formants=1 input=987 output=987.759 cents=-0.0138633 engine_ms=23 max_block_ms=0.2718
 PASS live impulse latency measured=23 ms at 48000 Hz
-LIVE rate=96000 formants=0 input=67 output=65.9345 cents=13.9233 engine_ms=23 max_block_ms=0.3949
-LIVE rate=96000 formants=0 input=75 output=73.9363 cents=12.2205 engine_ms=23 max_block_ms=0.2891
-LIVE rate=96000 formants=0 input=90 output=91.8435 cents=-12.304 engine_ms=23 max_block_ms=0.2944
-LIVE rate=96000 formants=0 input=140 output=139.092 cents=6.24253 engine_ms=23 max_block_ms=0.3402
-LIVE rate=96000 formants=0 input=213 output=209.55 cents=15.7451 engine_ms=23 max_block_ms=0.3964
-LIVE rate=96000 formants=0 input=432 output=439.871 cents=-0.508209 engine_ms=23 max_block_ms=0.3379
-LIVE rate=96000 formants=0 input=452 output=441.632 cents=6.4108 engine_ms=23 max_block_ms=0.2416
-LIVE rate=96000 formants=0 input=865 output=879.186 cents=-1.60262 engine_ms=23 max_block_ms=0.4957
-LIVE rate=96000 formants=0 input=987 output=987.759 cents=-0.0131675 engine_ms=23 max_block_ms=0.4568
-LIVE rate=96000 formants=1 input=67 output=66.116 cents=18.6822 engine_ms=23 max_block_ms=0.4068
-LIVE rate=96000 formants=1 input=75 output=74.1418 cents=17.0268 engine_ms=23 max_block_ms=0.2839
-LIVE rate=96000 formants=1 input=90 output=91.8626 cents=-11.9453 engine_ms=23 max_block_ms=0.3582
-LIVE rate=96000 formants=1 input=140 output=139.113 cents=6.50117 engine_ms=23 max_block_ms=0.6399
-LIVE rate=96000 formants=1 input=213 output=209.622 cents=16.3467 engine_ms=23 max_block_ms=0.2818
-LIVE rate=96000 formants=1 input=432 output=439.908 cents=-0.361755 engine_ms=23 max_block_ms=0.5112
-LIVE rate=96000 formants=1 input=452 output=441.658 cents=6.5131 engine_ms=23 max_block_ms=0.2253
-LIVE rate=96000 formants=1 input=865 output=879.351 cents=-1.2764 engine_ms=23 max_block_ms=0.3703
-LIVE rate=96000 formants=1 input=987 output=987.759 cents=-0.0131769 engine_ms=23 max_block_ms=0.3895
+LIVE rate=96000 formants=0 input=67 output=65.9345 cents=13.9233 engine_ms=23 max_block_ms=0.4912
+LIVE rate=96000 formants=0 input=75 output=73.9363 cents=12.2205 engine_ms=23 max_block_ms=0.4223
+LIVE rate=96000 formants=0 input=90 output=91.8435 cents=-12.304 engine_ms=23 max_block_ms=0.1964
+LIVE rate=96000 formants=0 input=140 output=139.092 cents=6.24253 engine_ms=23 max_block_ms=0.1912
+LIVE rate=96000 formants=0 input=213 output=209.55 cents=15.7451 engine_ms=23 max_block_ms=0.4649
+LIVE rate=96000 formants=0 input=432 output=439.871 cents=-0.508209 engine_ms=23 max_block_ms=0.4923
+LIVE rate=96000 formants=0 input=452 output=441.632 cents=6.4108 engine_ms=23 max_block_ms=0.4323
+LIVE rate=96000 formants=0 input=865 output=879.186 cents=-1.60262 engine_ms=23 max_block_ms=0.456
+LIVE rate=96000 formants=0 input=987 output=987.759 cents=-0.0131675 engine_ms=23 max_block_ms=0.5222
+LIVE rate=96000 formants=1 input=67 output=66.116 cents=18.6822 engine_ms=23 max_block_ms=0.4976
+LIVE rate=96000 formants=1 input=75 output=74.1418 cents=17.0268 engine_ms=23 max_block_ms=0.4917
+LIVE rate=96000 formants=1 input=90 output=91.8626 cents=-11.9453 engine_ms=23 max_block_ms=0.4779
+LIVE rate=96000 formants=1 input=140 output=139.113 cents=6.50117 engine_ms=23 max_block_ms=0.4508
+LIVE rate=96000 formants=1 input=213 output=209.622 cents=16.3467 engine_ms=23 max_block_ms=0.482
+LIVE rate=96000 formants=1 input=432 output=439.908 cents=-0.361755 engine_ms=23 max_block_ms=0.4857
+LIVE rate=96000 formants=1 input=452 output=441.658 cents=6.5131 engine_ms=23 max_block_ms=0.4363
+LIVE rate=96000 formants=1 input=865 output=879.351 cents=-1.2764 engine_ms=23 max_block_ms=0.3291
+LIVE rate=96000 formants=1 input=987 output=987.759 cents=-0.0131769 engine_ms=23 max_block_ms=0.2131
 PASS live impulse latency measured=23 ms at 96000 Hz
+PASS monitor gain rate=44100 fast=0 quiet RMS=0.000707093, +12=0.00281499, +24=0.0112067; ceiling/mute/gain-ramp preserved
+PASS monitor gain rate=44100 fast=1 quiet RMS=0.000707073, +12=0.00281491, +24=0.0112063; ceiling/mute/gain-ramp preserved
+PASS monitor gain rate=48000 fast=0 quiet RMS=0.000707091, +12=0.00281498, +24=0.0112066; ceiling/mute/gain-ramp preserved
+PASS monitor gain rate=48000 fast=1 quiet RMS=0.000707073, +12=0.00281491, +24=0.0112063; ceiling/mute/gain-ramp preserved
+PASS monitor gain rate=96000 fast=0 quiet RMS=0.000707069, +12=0.00281489, +24=0.0112063; ceiling/mute/gain-ramp preserved
+PASS monitor gain rate=96000 fast=1 quiet RMS=0.000707059, +12=0.00281485, +24=0.0112061; ceiling/mute/gain-ramp preserved
 PASS lookahead impulse, overload, headphone ceiling/fade/mute/fault latch at 44.1/48/96 kHz, both 1/5 ms lookahead
 PASS custom note masks and sustained-vibrato Humanize response: 0.231881 -> 0.0405159 semitone correction range
   detection 44100 Hz: 82.41 -> 82.4105 (0.010744 cents)
@@ -63,38 +69,38 @@ PASS custom note masks and sustained-vibrato Humanize response: 0.231881 -> 0.04
   detection 44100 Hz: 432 -> 432.085 (0.338633 cents)
   detection 44100 Hz: 880 -> 880.715 (1.40524 cents)
   crossings 439.915 detected 432.081 correction 0.314415
-  end-to-end 432 -> 440.001 target 440, DSP 4.37659% realtime, latency 64.5125 ms
+  end-to-end 432 -> 440.001 target 440, DSP 4.3759% realtime, latency 64.5125 ms
   crossings 439.924 detected 452.078 correction -0.468819
-  end-to-end 452 -> 440.005 target 440, DSP 4.86567% realtime, latency 64.5125 ms
+  end-to-end 452 -> 440.005 target 440, DSP 4.56588% realtime, latency 64.5125 ms
   crossings 207.649 detected 213.003 correction -0.44047
-  end-to-end 213 -> 207.658 target 207.652, DSP 4.38207% realtime, latency 64.5125 ms
+  end-to-end 213 -> 207.658 target 207.652, DSP 4.5538% realtime, latency 64.5125 ms
   detection 48000 Hz: 82.41 -> 82.4109 (0.0183516 cents)
   detection 48000 Hz: 146.83 -> 146.831 (0.0127557 cents)
   detection 48000 Hz: 220 -> 220.009 (0.0725547 cents)
   detection 48000 Hz: 432 -> 432.025 (0.101489 cents)
   detection 48000 Hz: 880 -> 880.553 (1.08705 cents)
   crossings 439.972 detected 432.025 correction 0.316557
-  end-to-end 432 -> 440.002 target 440, DSP 4.57263% realtime, latency 59.6667 ms
+  end-to-end 432 -> 440.002 target 440, DSP 4.72418% realtime, latency 59.6667 ms
   crossings 439.923 detected 452.079 correction -0.469031
-  end-to-end 452 -> 439.951 target 440, DSP 4.67722% realtime, latency 59.6667 ms
+  end-to-end 452 -> 439.951 target 440, DSP 4.797% realtime, latency 59.6667 ms
   crossings 207.647 detected 213.005 correction -0.44064
-  end-to-end 213 -> 207.65 target 207.652, DSP 4.74919% realtime, latency 59.6667 ms
+  end-to-end 213 -> 207.65 target 207.652, DSP 4.79672% realtime, latency 59.6667 ms
 ALL DSP TESTS PASSED
 PASS WASAPI plain/extensible float and PCM selection; actual JUCE capture/playback converters; old max step=1.17081, fixed capture error=0 (no device opened)
 PASS actual callback/worker: variable blocks, FIFO wrap, 44.1/48 kHz, restart, underrun, overflow, NaN and latched silence (no audio device opened)
-PASS LIVE STREAM block=64 measured_app_ms=29.3333 max_callback_ms=0.0972 max_worker_ms=0.3236 (memory simulation, no device/driver latency)
-PASS LIVE STREAM block=128 measured_app_ms=29.3333 max_callback_ms=0.131 max_worker_ms=0.3425 (memory simulation, no device/driver latency)
-PASS LIVE STREAM block=256 measured_app_ms=34.6667 max_callback_ms=0.1419 max_worker_ms=0.0928 (memory simulation, no device/driver latency)
-PASS LIVE STREAM block=512 measured_app_ms=45.3333 max_callback_ms=0.2786 max_worker_ms=0.0793 (memory simulation, no device/driver latency)
+PASS LIVE STREAM block=64 measured_app_ms=29.3333 max_callback_ms=0.147 max_worker_ms=0.0933 (memory simulation, no device/driver latency)
+PASS LIVE STREAM block=128 measured_app_ms=29.3333 max_callback_ms=0.3887 max_worker_ms=0.0927 (memory simulation, no device/driver latency)
+PASS LIVE STREAM block=256 measured_app_ms=34.6667 max_callback_ms=0.1911 max_worker_ms=0.2258 (memory simulation, no device/driver latency)
+PASS LIVE STREAM block=512 measured_app_ms=45.3333 max_callback_ms=0.5438 max_worker_ms=0.2703 (memory simulation, no device/driver latency)
+PASS quiet callback monitor unity RMS=0.00191268, +12 dB RMS=0.00761451; output meter and immediate mute (no device opened)
 PASS preset/control/keyboard state without a window or audio device
 segment 0: 207.65 Hz, error -0.0189478 cents
 segment 1: 439.999 Hz, error -0.00502131 cents
 segment 2: 439.949 Hz, error -0.201993 cents
 PASS 24-bit mono WAV x 2, 48000 Hz, 144000 samples each; actual saved audio is pitch-corrected
-take_20261018_015328_4645283_tuned.wav
-take_20261018_015328_4645283_original.wav
+take_20261018_015949_5026596_tuned.wav
+take_20261018_015949_5026596_original.wav
 PASS repeated start/stop at a changed sample rate
 
-Delivered executable SHA256: 80D402C681EB533B5E0BFD504910ED32C0B52DBD4DC08221AC33846400B69EE5
-WASAPI plain IEEE float capture/playback regression passed. No physical capture or playback performed.
-Patch applied successfully to an independent pinned source and reapplied idempotently.
+Delivered executable SHA256: C72796E113683C974FBA0771491E462EB4651D51A29A401060DA8B362523DEB0
+No physical capture or playback performed. Quiet input/output tests use memory buffers.
