@@ -5,6 +5,7 @@
 #define PITCHLAB_EMBEDDED_TESTS
 #include "../Tests/DspTests.cpp"
 #include "../Tests/LiveStreamTests.h"
+#include "../Tests/WasapiFormatTests.h"
 
 namespace theme {
 const juce::Colour bg{0xff11191f}, panel{0xff202b33}, field{0xff2c3a44}, text{0xffedf3f6}, muted{0xff9cacb8};
@@ -213,7 +214,7 @@ public:
         text(g,"OUT",563,777,30,18,9,theme::muted,true); meter(g,598,783,121,displayedOutput,theme::accent);
         text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,773,316,25,11,recording?theme::red:theme::muted);
         text(g,status,30,814,875,22,11,statusError?theme::red:theme::muted);
-        text(g,"STUDY 0.3.0",929,814,140,22,10,theme::muted,false,juce::Justification::right);
+        text(g,"STUDY 0.3.1",929,814,140,22,10,theme::muted,false,juce::Justification::right);
     }
 
 private:
@@ -303,7 +304,7 @@ private:
     }
     juce::String diagnosticText() {
         auto* device=audio.devices.getCurrentAudioDevice();
-        juce::String result="PitchLab 0.3.0 device diagnostic\n";
+        juce::String result="PitchLab 0.3.1 device diagnostic\n";
         result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
         result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
         result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
@@ -490,6 +491,8 @@ int runSelfTest(const juce::File& folder) {
     std::ofstream log(folder.getChildFile("integration-test.txt").getFullPathName().toStdString());
     if (!log) return 2;
     if (runDspTests(log) != 0) return 9;
+    try { testWasapiFormats(log); }
+    catch (const std::exception& e) { log << "FAIL WASAPI format: " << e.what() << '\n'; return 16; }
     if (runStreamTests(log) != 0) return 10;
     try { testLiveStreamLatency(log); }
     catch (const std::exception& e) { log << "FAIL live stream: " << e.what() << '\n'; return 15; }
@@ -545,7 +548,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.3.0"; }
+    const juce::String getApplicationVersion() override { return "0.3.1"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if(args.size()>=2 && args[0]=="--render-ui") {

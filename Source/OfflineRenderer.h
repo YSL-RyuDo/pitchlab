@@ -104,7 +104,7 @@ public:
         }
         if (!wetWriter->flush() || !dryWriter->flush() || written != length) return "WAV finalisation failed";
         wetWriter.reset(); dryWriter.reset();
-        juce::String report = "PitchLab 0.3.0 offline render\nNo audio device opened. No playback.\n";
+        juce::String report = "PitchLab 0.3.1 offline render\nNo audio device opened. No playback.\n";
         report += "Sample rate: " + juce::String(rate) + "\nInput/output frames: " + juce::String(length) + "/" + juce::String(written);
         report += "\nLatency trimmed: " + juce::String(latency) + " samples\nPeak: " + juce::String(peak, 6);
         report += "\nMaximum adjacent sample change: " + juce::String(maxStep, 6);

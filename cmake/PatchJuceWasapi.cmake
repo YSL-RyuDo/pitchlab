@@ -1,0 +1,21 @@
+# JUCE 8.0.15's converter selection misses non-extensible IEEE_FLOAT formats.
+# Patch the pinned source at configure time, including offline source ZIP builds.
+# Keep the patch explicit and fail closed if the upstream code no longer matches.
+set(_wasapi_file "${juce_SOURCE_DIR}/modules/juce_audio_devices/native/juce_WASAPI_windows.cpp")
+file(READ "${_wasapi_file}" _wasapi_source)
+set(_old "const bool isFloat = format->Format.wFormatTag == WAVE_FORMAT_EXTENSIBLE && format->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;")
+set(_new "const bool isFloat = pitchlabWasapiIsFloatFormat (format->Format.wFormatTag, format->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);")
+string(FIND "${_wasapi_source}" "${_new}" _patched)
+if(_patched EQUAL -1)
+    string(FIND "${_wasapi_source}" "${_old}" _original)
+    if(_original EQUAL -1)
+        message(FATAL_ERROR "Unexpected JUCE WASAPI source: review PitchLab's sample-format patch before building.")
+    endif()
+    string(REPLACE "${_old}" "${_new}" _wasapi_source "${_wasapi_source}")
+    string(REPLACE "static void copyWavFormat" "#include \"pitchlab_WasapiFormat.h\"\n\nstatic void copyWavFormat" _wasapi_source "${_wasapi_source}")
+    file(WRITE "${_wasapi_file}" "${_wasapi_source}")
+endif()
+string(FIND "${_wasapi_source}" "#include \"pitchlab_WasapiFormat.h\"" _header)
+if(_header EQUAL -1)
+    message(FATAL_ERROR "Incomplete PitchLab WASAPI format patch.")
+endif()
