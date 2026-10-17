@@ -54,8 +54,8 @@ private:
 
 class HeadphoneGuard {
 public:
-    static constexpr float defaultDb = 0, minimumDb = -60, maximumDb = 24;
-    static constexpr float peakCeiling = 0.03f; // -30.46 dBFS; not an acoustic SPL guarantee
+    static constexpr float defaultDb = 12, minimumDb = -60, maximumDb = 24;
+    static constexpr float peakCeiling = 0.25f; // -12.04 dBFS; not an acoustic SPL guarantee
     void prepare(double rate, bool lowLatency = false) {
         limiter.prepare(rate, peakCeiling, lowLatency ? 0.001 : 0.005); rampStep = float(1 / (rate * 0.25));
         ramp = 0; wasEnabled = false; fault = false;

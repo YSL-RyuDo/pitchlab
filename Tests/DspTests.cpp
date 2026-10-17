@@ -46,7 +46,7 @@ int runDspTests(std::ostream& output) {
             float peak = 0;
             for (int i = 0; i < int(rate); ++i) {
                 float y = guard.process(1, true, -18);
-                require(std::isfinite(y) && std::abs(y) <= 0.030001f, "headphone output ceiling");
+                require(std::isfinite(y) && std::abs(y) <= pitchlab::HeadphoneGuard::peakCeiling+0.000001f, "headphone output ceiling");
                 if (i < delay) require(y == 0, "headphone enable begins silent");
                 if (i == delay) require(y < 0.0001f, "headphone fade starts gently");
                 peak = std::max(peak, y);

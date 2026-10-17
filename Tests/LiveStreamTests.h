@@ -42,7 +42,7 @@ inline void testQuietMonitorStream(std::ostream& log) {
     auto owned = std::make_unique<AudioEngine>(); auto& engine = *owned;
     engine.pitch.parameters.noiseGate=true;
     engine.prepareStream(48000,128); engine.pitch.parameters.amount=0;
-    require(engine.monitorDb.load()==0 && !engine.monitoring.load(), "default monitor is off at unity gain");
+    require(engine.monitorDb.load()==pitchlab::HeadphoneGuard::defaultDb && !engine.monitoring.load(), "default monitor gain is configured but listening is off");
     engine.monitoring=true;
     std::array<float,128> input{}, output{};
     const float* ins[]={input.data()}; float* outs[]={output.data()};
@@ -80,11 +80,25 @@ inline void testQuietMonitorStream(std::ostream& log) {
         require(engine.streamFault.load()==0 && engine.bufferedOutputSamples()>=supplied-consumed,"idle monitor worker drains");
         if(offset>90000) for(float x:output) require(std::abs(x)<1e-8f,"idle hum is muted even at maximum headphone gain");
     }
+    engine.pitch.parameters.noiseGate=false; engine.monitorDb=pitchlab::HeadphoneGuard::defaultDb;
+    double softEnergy=0; int softCount=0;
+    for(int offset=0;offset<48000;offset+=128) {
+        for(int i=0;i<128;++i) input[i]=float(.0005*std::sin(2*pitchlab::pi*220*(offset+i)/48000));
+        engine.audioDeviceIOCallbackWithContext(ins,1,outs,1,128,context);
+        supplied+=128; consumed+=128;
+        const auto deadline=juce::Time::getMillisecondCounter()+2000;
+        while(engine.bufferedOutputSamples()<supplied-consumed && engine.streamFault.load()==0
+            && juce::Time::getMillisecondCounter()<deadline) juce::Thread::sleep(1);
+        require(engine.streamFault.load()==0 && engine.bufferedOutputSamples()>=supplied-consumed,"very quiet monitor worker drains");
+        if(offset>24000) for(float x:output) {softEnergy+=x*x; ++softCount;}
+    }
+    const double softRms=std::sqrt(softEnergy/softCount);
+    require(softRms>.00065 && softRms<.00076,"voice below old gate threshold survives with new default settings");
     engine.monitoring=false;
     engine.audioDeviceIOCallbackWithContext(ins,1,outs,1,128,context);
     for(float x:output) require(x==0,"disabled callback monitor is silent");
     require(engine.monitorPeak.load()==0, "disabled PHONES meter is zero");
     engine.stop();
     log << "PASS quiet callback monitor unity RMS=" << unity << ", +12 dB RMS=" << boosted
-        << "; gate preserves voice, blocks idle hum at +24 dB, output meter and immediate mute (no device opened)\n";
+        << "; optional gate blocks idle hum; gate-off very quiet RMS="<<softRms<<"; output meter and immediate mute (no device opened)\n";
 }
