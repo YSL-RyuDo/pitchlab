@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 #include "OutputGuard.h"
+#include "VocalTone.h"
 #include "../ThirdParty/Signalsmith/signalsmith-stretch.h"
 
 namespace pitchlab {
@@ -119,6 +120,8 @@ struct Parameters {
     std::atomic<float> retuneMs{12}, amount{1}, outputDb{-6};
     std::atomic<int> noteMask{0}, voiceRange{0}; // 0 mask uses key/scale
     std::atomic<float> humanize{0};
+    std::atomic<int> toneStyle{0};
+    std::atomic<float> fxMix{0}, bpm{140};
     std::atomic<bool> enabled{true}, preserveFormants{true};
 };
 
@@ -132,6 +135,7 @@ public:
         rate = newRate;
         lowLatency = useLowLatency;
         detector.prepare(rate, lowLatency);
+        tone.prepare(rate);
         if (lowLatency) {
             liveShifter = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>(42);
             const int window = std::max(384, int(std::round(rate * 0.022 / 32)) * 32);
@@ -208,12 +212,13 @@ public:
                 }
             }
             const float desiredMix = parameters.enabled.load() ? 1.0f : 0.0f;
+            tone.select(parameters.toneStyle.load(), parameters.fxMix.load(), parameters.bpm.load());
             const float requestedDb = parameters.outputDb.load();
             const float desiredGain = std::isfinite(requestedDb) ? std::pow(10.0f, std::clamp(requestedDb, -60.0f, 0.0f) / 20.0f) : 0;
             const float smooth = float(1.0 - std::exp(-1.0 / (rate * 0.01)));
             for (int i = 0; i < n; ++i) {
                 effectMix += smooth * (desiredMix - effectMix); gain += smooth * (desiredGain - gain);
-                float y = (blockOut[i] * effectMix + dry[offset + i] * (1 - effectMix)) * gain;
+                float y = (tone.process(blockOut[i]) * effectMix + dry[offset + i] * (1 - effectMix)) * gain;
                 if (!std::isfinite(y)) y = 0;
                 if (std::abs(y) > 0.98f || std::abs(blockIn[i]) >= 0.999f) clipped = true;
                 wet[offset + i] = outputLimiter.process(y);
@@ -228,6 +233,7 @@ public:
 private:
     static constexpr int quantum = 128;
     PitchDetector detector;
+    VocalTone tone;
     std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
     std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>> liveShifter;
     bool lowLatency = false;

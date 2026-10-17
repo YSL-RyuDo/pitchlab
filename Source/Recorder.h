@@ -1,6 +1,8 @@
 #pragma once
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <atomic>
+#include <array>
+#include "RecordLevel.h"
 
 // Two-channel single-producer/single-consumer FIFO. The callback only copies;
 // filesystem writes and WAV header finalisation happen on the recorder thread.
@@ -8,8 +10,9 @@ class Recorder : private juce::Thread {
 public:
     Recorder() : Thread("PitchLab WAV writer"), fifo(capacity), buffer(2, capacity) {}
     ~Recorder() override { stop(); }
-    juce::String start(const juce::File& folder, double rate) {
+    juce::String start(const juce::File& folder, double rate, float recordDb = 0) {
         stop(); fifo.reset(); failed = false; samplesWritten = 0;
+        level.setGain(recordDb);
         auto result = folder.createDirectory();
         if (result.failed()) return result.getErrorMessage();
         const auto name = "take_" + juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S")
@@ -61,12 +64,15 @@ private:
     std::atomic<int> producers{0};
     std::atomic<juce::int64> samplesWritten{0};
     double sampleRate = 48000;
+    pitchlab::RecordLevel level;
+    std::array<float,4096> levelBuffer{};
     void run() override {
         while (!threadShouldExit() || fifo.getNumReady() > 0) {
             int a, n1, b, n2; fifo.prepareToRead(std::min(4096, fifo.getNumReady()), a, n1, b, n2);
             auto write = [&](int start, int count) {
                 if (!count) return;
-                const float* wet[] = {buffer.getReadPointer(0, start)};
+                for(int i=0;i<count;++i) levelBuffer[size_t(i)]=level.process(buffer.getSample(0,start+i));
+                const float* wet[] = {levelBuffer.data()};
                 const float* dry[] = {buffer.getReadPointer(1, start)};
                 const bool ok1 = wetWriter->writeFromFloatArrays(wet, 1, count);
                 const bool ok2 = dryWriter->writeFromFloatArrays(dry, 1, count);

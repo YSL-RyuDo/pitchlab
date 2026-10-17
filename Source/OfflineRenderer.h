@@ -1,5 +1,6 @@
 #pragma once
 #include "PitchEngine.h"
+#include "RecordLevel.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
 struct VocalSettings {
@@ -7,20 +8,32 @@ struct VocalSettings {
     float speed = 12, amount = 1, humanize = 0;
     bool formants = true, enabled = true;
     bool lowLatency = false;
+    int style = 0;
+    float fx = 0, bpm = 140, recordDb = 0;
+    bool levelOnly = false;
+    static constexpr int presetCount = 9, customId = 10;
     static VocalSettings capture(const pitchlab::Parameters& p) {
-        return {p.key.load(), p.scale.load(), p.noteMask.load(), p.voiceRange.load(),
-                p.retuneMs.load(), p.amount.load(), p.humanize.load(), p.preserveFormants.load(), p.enabled.load()};
+        VocalSettings s;
+        s.key=p.key.load(); s.scale=p.scale.load(); s.mask=p.noteMask.load(); s.range=p.voiceRange.load();
+        s.speed=p.retuneMs.load(); s.amount=p.amount.load(); s.humanize=p.humanize.load();
+        s.formants=p.preserveFormants.load(); s.enabled=p.enabled.load();
+        s.style=p.toneStyle.load(); s.fx=p.fxMix.load(); s.bpm=p.bpm.load(); return s;
     }
     void apply(pitchlab::Parameters& p) const {
         p.key = key; p.scale = scale; p.noteMask = mask; p.voiceRange = range;
         p.retuneMs = speed; p.amount = amount; p.humanize = humanize;
         p.preserveFormants = formants; p.enabled = enabled;
+        p.toneStyle=style; p.fxMix=fx; p.bpm=bpm;
     }
     static VocalSettings preset(int index) {
         VocalSettings s;
         if (index == 0) { s.speed = 45; s.amount = 0.85f; s.humanize = 0.65f; }
         if (index == 1) { s.speed = 5; s.amount = 1; s.humanize = 0.15f; }
         if (index == 2) { s.speed = 0; s.amount = 1; s.humanize = 0; }
+        if(index>=3 && index<presetCount) {
+            const auto& p=pitchlab::styleProfiles[size_t(index-3)];
+            s.speed=p.speed; s.amount=p.amount; s.humanize=p.humanize; s.style=index-2; s.fx=1;
+        }
         return s;
     }
 };
@@ -56,7 +69,7 @@ public:
         auto result = destination.createDirectory();
         if (result.failed()) return result.getErrorMessage();
         auto base = source.getFileNameWithoutExtension() + "_" + juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
-        job.wetFile = destination.getNonexistentChildFile(base + "_tuned", ".wav");
+        job.wetFile = destination.getNonexistentChildFile(base + (settings.levelOnly?"_louder":"_tuned"), ".wav");
         job.dryFile = destination.getNonexistentChildFile(base + "_original", ".wav");
         job.reportFile = destination.getNonexistentChildFile(base + "_report", ".txt");
         const auto options = juce::AudioFormatWriterOptions().withSampleRate(rate).withNumChannels(1).withBitsPerSample(24);
@@ -64,11 +77,13 @@ public:
         if (!wetStream || !dryStream) return juce::String::fromUTF8("출력 파일을 만들지 못했어요.");
         auto wetWriter = format.createWriterFor(wetStream, options), dryWriter = format.createWriterFor(dryStream, options);
         if (!wetWriter || !dryWriter) return juce::String::fromUTF8("WAV 저장을 시작하지 못했어요.");
-        pitchlab::PitchEngine engine; engine.prepare(rate, settings.lowLatency); settings.apply(engine.parameters);
+        pitchlab::PitchEngine engine;
+        if(!settings.levelOnly) { engine.prepare(rate, settings.lowLatency); settings.apply(engine.parameters); }
+        pitchlab::RecordLevel level; level.setGain(settings.recordDb);
         constexpr int block = 512;
         juce::AudioBuffer<float> readBuffer(int(reader->numChannels), block);
         std::array<float, block> input{}, wet{}, dry{};
-        const int latency = engine.latencySamples();
+        const int latency = settings.levelOnly?0:engine.latencySamples();
         juce::int64 written = 0, voiced = 0, invalid = 0;
         float peak = 0, maxStep = 0, previous = 0;
         const double started = juce::Time::getMillisecondCounterHiRes();
@@ -86,13 +101,15 @@ public:
                     input[size_t(i)] = sample;
                 }
             }
-            engine.process(input.data(), wet.data(), dry.data(), count);
+            if(settings.levelOnly) { std::copy_n(input.data(),count,wet.data()); std::copy_n(input.data(),count,dry.data()); }
+            else engine.process(input.data(), wet.data(), dry.data(), count);
             if (engine.detectedHz.load() > 0) voiced += count;
             const int begin = int(std::max<juce::int64>(0, latency - offset));
             const int end = int(std::min<juce::int64>(count, length + latency - offset));
             if (begin < end) {
                 for (int i = begin; i < end; ++i) {
-                    if (!std::isfinite(wet[size_t(i)]) || std::abs(wet[size_t(i)]) > 0.500001f) return "Invalid processed output";
+                    wet[size_t(i)] = level.process(wet[size_t(i)]);
+                    if (!std::isfinite(wet[size_t(i)]) || std::abs(wet[size_t(i)]) > pitchlab::RecordLevel::ceiling+.000001f) return "Invalid processed output";
                     peak = std::max(peak, std::abs(wet[size_t(i)]));
                     maxStep = std::max(maxStep, std::abs(wet[size_t(i)] - previous)); previous = wet[size_t(i)];
                 }
@@ -104,7 +121,7 @@ public:
         }
         if (!wetWriter->flush() || !dryWriter->flush() || written != length) return "WAV finalisation failed";
         wetWriter.reset(); dryWriter.reset();
-        juce::String report = "PitchLab 0.3.2 offline render\nNo audio device opened. No playback.\n";
+        juce::String report = "PitchLab 0.4.0 offline render\nNo audio device opened. No playback.\n";
         report += "Sample rate: " + juce::String(rate) + "\nInput/output frames: " + juce::String(length) + "/" + juce::String(written);
         report += "\nLatency trimmed: " + juce::String(latency) + " samples\nPeak: " + juce::String(peak, 6);
         report += "\nMaximum adjacent sample change: " + juce::String(maxStep, 6);
@@ -114,7 +131,10 @@ public:
         report += "\nRetune ms: " + juce::String(settings.speed) + "\nAmount: " + juce::String(settings.amount) + "\nHumanize: " + juce::String(settings.humanize);
         report += "\nVoice range: " + juce::String(settings.range) + "\nKey: " + juce::String(settings.key) + "\nScale: " + juce::String(settings.scale) + "\nNote mask: " + juce::String(settings.mask);
         report += "\nFormants: " + juce::String(int(settings.formants)) + "\nEffect enabled: " + juce::String(int(settings.enabled)) + "\nListening quality has NOT been verified.\n";
-        report += "Engine: " + juce::String(settings.lowLatency ? "Live / Signalsmith short window" : "File / Rubber Band") + "\n";
+        report += "Engine: " + juce::String(settings.levelOnly ? "File gain only / no pitch processing" : settings.lowLatency ? "Live / Signalsmith short window" : "File / Rubber Band") + "\n";
+        report += "Level-only (no tuning): " + juce::String(int(settings.levelOnly)) + "\nFile gain dB: " + juce::String(settings.recordDb);
+        report += "\nStyle: " + juce::String(settings.style) + "\nFX mix: " + juce::String(settings.fx) + "\nBPM: " + juce::String(settings.bpm);
+        report += "\nFile sample-peak ceiling: -1 dBFS (not LUFS/true-peak normalisation). Length preserved; effect tails after EOF are not appended.\n";
         if (!job.reportFile.replaceWithText(report)) return "Report write failed";
         return {};
     }
