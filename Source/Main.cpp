@@ -130,6 +130,13 @@ public:
         setupSlider(fx,0,100,1,0,"%",juce::String::fromUTF8("스타일 효과"));
         setupSlider(tempo,60,200,1,140," BPM",juce::String::fromUTF8("곡의 BPM"));
         setupSlider(recordGain,0,30,1,18," dB",juce::String::fromUTF8("녹음 파일 증폭"));
+        setupToggle(noiseGate,juce::String::fromUTF8("대기 잡음 줄이기"),true);
+        setupSlider(noiseThreshold,-78,-36,1,-60," dB",juce::String::fromUTF8("잡음 차단 기준"));
+        audio.pitch.parameters.noiseGate=true;
+        noiseGate.onClick=[this] { audio.pitch.parameters.noiseGate=noiseGate.getToggleState(); };
+        noiseThreshold.onValueChange=[this] { audio.pitch.parameters.noiseThresholdDb=float(noiseThreshold.getValue()); };
+        noiseGate.setTooltip(juce::String::fromUTF8("작은 대기 잡음을 보정 전에 줄입니다. 듣기와 보정 녹음에 적용하며 원본은 유지합니다. 말하는 중의 잡음이나 장치 끊김을 복구하는 기능은 아닙니다."));
+        noiseThreshold.setTooltip(juce::String::fromUTF8("기본 -60 dBFS. 대기 잡음이 남으면 -54 쪽으로, 작은 목소리가 잘리면 -66 쪽으로 조절하세요."));
         fx.onValueChange=[this] { audio.pitch.parameters.fxMix=float(fx.getValue()/100); markCustom(); };
         tempo.onValueChange=[this] { audio.pitch.parameters.bpm=float(tempo.getValue()); };
         fx.setTooltip(juce::String::fromUTF8("스타일 프리셋의 음색·메아리·룸 효과 양입니다. 0%면 음정 보정만 남습니다."));
@@ -137,7 +144,7 @@ public:
         recordGain.setTooltip(juce::String::fromUTF8("저장되는 보정 WAV만 키웁니다. 기본 +18 dB, 최대 +30 dB. 이미 큰 입력은 0 dB로 낮추세요. 원본과 헤드폰 음량은 바뀌지 않습니다. 녹음 시작 시 고정됩니다."));
         setupButton(levelButton,juce::String::fromUTF8("기존 WAV 음량 키우기")); levelButton.onClick=[this] { chooseFile(true); };
         preset.addItemList({"Natural vocal", "Tight pop", "Hard tune"}, 1);
-        for(int i=0;i<6;++i) preset.addItem(juce::String::fromUTF8(pitchlab::styleProfiles[size_t(i)].name),i+4);
+        for(int i=0;i<int(pitchlab::styleProfiles.size());++i) preset.addItem(juce::String::fromUTF8(pitchlab::styleProfiles[size_t(i)].name),i+4);
         preset.addItem("Custom",VocalSettings::customId); addAndMakeVisible(preset);
         preset.setTooltip(juce::String::fromUTF8("아티스트 스타일 참고용 자체 프리셋입니다. 공식 세팅이나 목소리 복제가 아닙니다. KEY/SCALE/BPM은 곡에 맞추세요."));
         preset.onChange = [this] { if (preset.getSelectedId() >= 1 && preset.getSelectedId() <= VocalSettings::presetCount) applyPreset(preset.getSelectedId() - 1); };
@@ -177,14 +184,18 @@ public:
         keyboard.mask=1; keyboard.togglePitchClass(0);
         require(keyboard.mask==1, "keyboard cannot disable every note");
         const int songMask=audio.pitch.parameters.noteMask.load();
-        for(int id=4;id<=9;++id) {
+        for(int id=4;id<=VocalSettings::presetCount;++id) {
             preset.setSelectedId(id,juce::sendNotificationSync);
             require(audio.pitch.parameters.toneStyle.load()==id-3 && audio.pitch.parameters.fxMix.load()==1,"artist style reaches live processor");
             require(audio.monitorDb.load()==12 && recordGain.getValue()==18 && audio.pitch.parameters.noteMask.load()==songMask,
                     "styles preserve headphone gain, file gain and song notes");
         }
         auto settings=VocalSettings::capture(audio.pitch.parameters);
-        require(settings.style==6 && settings.fx==1,"offline capture carries style FX");
+        require(settings.style==int(pitchlab::styleProfiles.size()) && settings.fx==1,"offline capture carries style FX");
+        require(settings.noiseGate && settings.noiseThresholdDb==-60,"noise controls reach offline settings");
+        noiseThreshold.setValue(-66,juce::sendNotificationSync);
+        preset.setSelectedId(4,juce::sendNotificationSync);
+        require(audio.pitch.parameters.noiseThresholdDb.load()==-66,"preset preserves noise threshold");
     }
     void resized() override {
         preset.setBounds(489, 32, 445, 34);
@@ -201,6 +212,7 @@ public:
             c->setTopLeftPosition(c->getX(),c->getY()+100);
         fx.setBounds(45,752,245,38); tempo.setBounds(320,752,175,38);
         recordGain.setBounds(530,752,245,38); levelButton.setBounds(815,749,240,38);
+        noiseGate.setBounds(800,608,250,28); noiseThreshold.setBounds(800,641,250,34);
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(theme::bg);
@@ -248,8 +260,8 @@ public:
         text(g,target>=0 ? juce::String(audio.pitch.correction.load()*100,0)+" cents" : "INPUT  /  TARGET",439,417,222,21,11,theme::muted,false,juce::Justification::centred);
         card(g,28,461,1044,102); text(g,"PITCH TRACE",50,466,200,18,10,theme::muted,true); drawHistory(g);
         card(g,28,577,1044,125); text(g,juce::String::fromUTF8("보정할 음 선택"),50,582,280,21,12,theme::text,true);
-        text(g,juce::String::fromUTF8("건반을 눌러 음을 켜고 끄세요"),800,612,244,25,12,theme::text);
-        text(g,juce::String::fromUTF8("초록 표시 = 보정에 사용할 음"),800,645,244,24,11,theme::muted);
+        text(g,juce::String::fromUTF8("초록 건반 = 보정에 사용할 음"),475,582,300,21,11,theme::muted);
+        text(g,juce::String::fromUTF8(!noiseGate.getToggleState()?"잡음 차단 끔":!running?"작은 목소리가 잘리면 -66 dB":audio.pitch.noiseGateGain.load()<.1f?"대기 잡음 차단 중":"목소리 통과 중"),800,678,250,18,10,theme::muted);
         card(g,28,714,1044,86);
         const int style=audio.pitch.parameters.toneStyle.load();
         text(g,style>0 ? juce::String::fromUTF8(pitchlab::styleProfiles[size_t(style-1)].description)
@@ -262,20 +274,20 @@ public:
         text(g,"PHONES",551,877,44,18,9,theme::muted,true); meter(g,598,883,121,displayedOutput,theme::accent);
         text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,873,316,25,11,recording?theme::red:theme::muted);
         text(g,status,30,914,875,22,11,statusError?theme::red:theme::muted);
-        text(g,"STUDY 0.4.0",929,914,140,22,10,theme::muted,false,juce::Justification::right);
+        text(g,"STUDY 0.4.1",929,914,140,22,10,theme::muted,false,juce::Justification::right);
     }
 
 private:
     theme::Look look;
     AudioEngine audio;
     juce::TextButton deviceButton, startButton, recordButton, folderButton, locationButton, fileButton, diagnosticButton, levelButton;
-    juce::ToggleButton monitor, bypass, formants;
+    juce::ToggleButton monitor, bypass, formants, noiseGate;
     juce::ComboBox key, scale, preset, voice;
     VocalKeyboard keyboard;
     std::unique_ptr<OfflineRenderer> renderJob;
     int driverXruns = 0, xrunBaseline = 0;
     juce::String lastDiagnostic;
-    juce::Slider speed, amount, humanize, volume, fx, tempo, recordGain;
+    juce::Slider speed, amount, humanize, volume, fx, tempo, recordGain, noiseThreshold;
     juce::TooltipWindow tooltips{this, 700};
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::DialogWindow> deviceWindow;
@@ -355,7 +367,7 @@ private:
     }
     juce::String diagnosticText() {
         auto* device=audio.devices.getCurrentAudioDevice();
-        juce::String result="PitchLab 0.4.0 device diagnostic\n";
+        juce::String result="PitchLab 0.4.1 device diagnostic\n";
         result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
         result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
         result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
@@ -366,6 +378,8 @@ private:
         result+="\nLongest DSP block ms: "+juce::String(audio.maxDspMs.load(),3)+"\nDevice xruns since start: "+juce::String(driverXruns);
         result+="\nProcessed frames: "+juce::String(audio.processedSamples.load())+"\nMonitoring: "+juce::String(int(audio.monitoring.load()));
         result+="\nMonitor gain dB: "+juce::String(audio.monitorDb.load())+"\nPost-guard monitor peak: "+juce::String(audio.monitorPeak.load(),6);
+        result+="\nNoise gate enabled: "+juce::String(int(audio.pitch.parameters.noiseGate.load()))+"\nNoise threshold dBFS: "+juce::String(audio.pitch.parameters.noiseThresholdDb.load());
+        result+="\nNoise gate gain: "+juce::String(audio.pitch.noiseGateGain.load(),6)+"\nInput peak: "+juce::String(audio.pitch.inputPeak.load(),6);
         result+="\nCurrent device open: "+juce::String(int(device!=nullptr))+"\nNo microphone audio included.\n";
         return result;
     }
@@ -614,7 +628,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.4.0"; }
+    const juce::String getApplicationVersion() override { return "0.4.1"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if(args.size()>=2 && args[0]=="--render-ui") {

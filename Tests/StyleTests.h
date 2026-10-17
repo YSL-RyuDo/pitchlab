@@ -10,8 +10,9 @@ inline void testStyleProcessing(std::ostream& log) {
         require(level.process(std::numeric_limits<float>::quiet_NaN())==0,"file boost rejects nonfinite samples");
     }
     for(double rate : {44100.,48000.,96000.}) {
-        std::array<double,6> signatures{};
-        for(int style=1;style<=6;++style) {
+        constexpr int styles=int(pitchlab::styleProfiles.size());
+        std::array<double,styles> signatures{};
+        for(int style=1;style<=styles;++style) {
             pitchlab::PitchEngine engine; engine.prepare(rate,true);
             engine.parameters.toneStyle=style; engine.parameters.fxMix=1; engine.parameters.bpm=140;
             engine.parameters.retuneMs=pitchlab::styleProfiles[size_t(style-1)].speed;
@@ -37,17 +38,17 @@ inline void testStyleProcessing(std::ostream& log) {
             require(seconds<2,"style DSP processes faster than realtime");
             log<<"PASS style="<<style<<" rate="<<rate<<" peak="<<peak<<" tail_energy="<<tail<<" render_seconds="<<seconds<<'\n';
         }
-        for(int a=0;a<6;++a)for(int b=a+1;b<6;++b)
+        for(int a=0;a<styles;++a)for(int b=a+1;b<styles;++b)
             require(std::abs(signatures[a]-signatures[b])>.001,"style chains produce distinct output");
         pitchlab::VocalTone tone; tone.prepare(rate); tone.select(0,0,140);
         for(int i=0;i<2000;++i) require(tone.process(.0123f)==.0123f,"legacy style bypass is exact");
         float previous=0,maxStep=0;
         for(int i=0;i<int(rate*2);++i) {
-            if(i%int(rate*.2)==0) tone.select((i/int(rate*.2))%7,1,140);
+            if(i%int(rate*.2)==0) tone.select((i/int(rate*.2))%(styles+1),1,140);
             const float y=tone.process(.01f); maxStep=std::max(maxStep,std::abs(y-previous)); previous=y;
             require(std::isfinite(y)&&std::abs(y)<.1f,"switching styles remains bounded");
         }
         require(maxStep<.011f,"style switching crossfades rather than jumps");
     }
-    log<<"PASS file gain/ceiling and six distinct live style chains, bypass, tails and switching\n";
+    log<<"PASS file gain/ceiling and eight distinct live style chains, bypass, tails and switching\n";
 }

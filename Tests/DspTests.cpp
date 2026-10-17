@@ -17,11 +17,13 @@ double estimate(const std::vector<float>& data, double rate) {
 #include "LiveDspTests.h"
 #include "MonitorGainTests.h"
 #include "StyleTests.h"
+#include "NoiseGateTests.h"
 int runDspTests(std::ostream& output) {
     try {
         testLiveDsp(output);
         testMonitorGain(output);
         testStyleProcessing(output);
+        testNoiseGate(output);
         for (double rate : {44100., 48000., 96000.}) for (bool fast : {false, true}) {
             pitchlab::LookAheadLimiter limiter; limiter.prepare(rate, 0.5f, fast ? 0.001 : 0.005);
             const int delay = limiter.latencySamples();

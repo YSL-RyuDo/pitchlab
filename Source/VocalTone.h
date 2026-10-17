@@ -11,13 +11,15 @@ struct StyleProfile {
     float speed, amount, humanize;
     float lowpass, air, drive, echo, beats, room;
 };
-inline constexpr std::array<StyleProfile,6> styleProfiles{{
+inline constexpr std::array<StyleProfile,8> styleProfiles{{
     {"T-Pain / Snap", "즉시 붙는 음정 · 짧은 메아리 / 스타일 참고",0,1,0,11000,.12f,1,.07f,.5f,.05f},
     {"Travis Scott / Space", "빠른 보정 · 어두운 톤 · 긴 메아리 / 스타일 참고",3,1,.08f,4800,-.12f,1.8f,.22f,1,.22f},
     {"Future / Room", "빠른 보정 · 4분음표 딜레이 · 룸 / 스타일 참고",7,1,.15f,8500,.08f,1,.15f,1,.13f},
     {"Sik-K / Air Hook", "밝은 훅 · 가벼운 메아리 / 공개 수치 없는 근사 프리셋",12,.96f,.25f,11000,.3f,1,.13f,.5f,.16f},
     {"CHANGMO / Upfront", "앞으로 나오는 싱잉랩 · 절제된 공간 / 근사 프리셋",8,1,.2f,9500,.18f,1.3f,.08f,.5f,.08f},
-    {"ASH ISLAND / Emo", "긴 음을 남기는 보정 · 잔향 / 공개 수치 없는 근사 프리셋",20,.92f,.45f,7500,.08f,1.2f,.16f,1,.24f}
+    {"ASH ISLAND / Emo", "긴 음을 남기는 보정 · 잔향 / 공개 수치 없는 근사 프리셋",20,.92f,.45f,7500,.08f,1.2f,.16f,1,.24f},
+    {"NOWIMYOUNG / Bright", "밝고 빠르게 붙는 훅 · 짧은 메아리 / 자체 근사 프리셋",4,1,.10f,10500,.25f,1.15f,.11f,.5f,.10f},
+    {"Royal 44 / Melodic", "부드러운 멜로디 · 긴 음과 공간 / 자체 근사 프리셋",16,.97f,.35f,8200,.10f,1.05f,.18f,1,.19f}
 }};
 
 class VoiceColour {
@@ -69,7 +71,7 @@ public:
         weights.fill(0); active=0; smooth=float(1-std::exp(-1/(rate*.02)));
     }
     void select(int style, float mix, float tempo) {
-        style=std::clamp(style,0,6);
+        style=std::clamp(style,0,int(styleProfiles.size()));
         if(style!=active && style>0 && weights[size_t(style-1)]<.000001f) voices[size_t(style-1)].reset();
         active=style; desiredMix=std::clamp(std::isfinite(mix)?mix:0.f,0.f,1.f);
         bpm=std::clamp(std::isfinite(tempo)?tempo:140.f,60.f,200.f);
@@ -85,7 +87,7 @@ public:
         return y;
     }
 private:
-    std::array<VoiceColour,6> voices; std::array<float,6> weights{};
+    std::array<VoiceColour,styleProfiles.size()> voices; std::array<float,styleProfiles.size()> weights{};
     float smooth=0,desiredMix=0,bpm=140; int active=0;
 };
 }

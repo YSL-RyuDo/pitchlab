@@ -4,6 +4,8 @@ PASS live style 3: frames=667684 peak=0.853260 RMS=0.128217; dry unchanged
 PASS live style 4: frames=667684 peak=0.858673 RMS=0.132299; dry unchanged
 PASS live style 5: frames=667684 peak=0.747427 RMS=0.125129; dry unchanged
 PASS live style 6: frames=667684 peak=0.774753 RMS=0.127196; dry unchanged
+PASS live style 7: frames=667684 peak=0.811818 RMS=0.128649; dry unchanged
+PASS live style 8: frames=667684 peak=0.843796 RMS=0.129085; dry unchanged
 PASS level-only +18 dB: measured 17.999998 dB; 48017 frames, no added pitch processing
 PASS short silence remains exactly silent with +30 dB
 PASS overloaded gain-only WAV stays below -1 dBFS sample-peak ceiling

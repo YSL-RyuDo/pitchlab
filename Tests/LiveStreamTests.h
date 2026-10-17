@@ -40,6 +40,7 @@ inline void testLiveStreamLatency(std::ostream& log) {
 
 inline void testQuietMonitorStream(std::ostream& log) {
     auto owned = std::make_unique<AudioEngine>(); auto& engine = *owned;
+    engine.pitch.parameters.noiseGate=true;
     engine.prepareStream(48000,128); engine.pitch.parameters.amount=0;
     require(engine.monitorDb.load()==0 && !engine.monitoring.load(), "default monitor is off at unity gain");
     engine.monitoring=true;
@@ -68,11 +69,22 @@ inline void testQuietMonitorStream(std::ostream& log) {
     const double unity=std::sqrt(sum[0]/counts[0]), boosted=std::sqrt(sum[1]/counts[1]);
     require(unity>.0018 && unity<.0021, "quiet microphone is not attenuated by another 36 dB");
     require(boosted/unity>3.9 && boosted/unity<4.1, "quiet callback output follows monitor boost");
+    engine.monitorDb=24;
+    for(int offset=0;offset<96000;offset+=128) {
+        for(int i=0;i<128;++i) input[i]=float(.0004*std::sin(2*pitchlab::pi*60*(offset+i)/48000));
+        engine.audioDeviceIOCallbackWithContext(ins,1,outs,1,128,context);
+        supplied+=128; consumed+=128;
+        const auto deadline=juce::Time::getMillisecondCounter()+2000;
+        while(engine.bufferedOutputSamples()<supplied-consumed && engine.streamFault.load()==0
+            && juce::Time::getMillisecondCounter()<deadline) juce::Thread::sleep(1);
+        require(engine.streamFault.load()==0 && engine.bufferedOutputSamples()>=supplied-consumed,"idle monitor worker drains");
+        if(offset>90000) for(float x:output) require(std::abs(x)<1e-8f,"idle hum is muted even at maximum headphone gain");
+    }
     engine.monitoring=false;
     engine.audioDeviceIOCallbackWithContext(ins,1,outs,1,128,context);
     for(float x:output) require(x==0,"disabled callback monitor is silent");
     require(engine.monitorPeak.load()==0, "disabled PHONES meter is zero");
     engine.stop();
     log << "PASS quiet callback monitor unity RMS=" << unity << ", +12 dB RMS=" << boosted
-        << "; output meter and immediate mute (no device opened)\n";
+        << "; gate preserves voice, blocks idle hum at +24 dB, output meter and immediate mute (no device opened)\n";
 }

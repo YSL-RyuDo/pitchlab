@@ -8,6 +8,7 @@
 #include <vector>
 #include "OutputGuard.h"
 #include "VocalTone.h"
+#include "NoiseGate.h"
 #include "../ThirdParty/Signalsmith/signalsmith-stretch.h"
 
 namespace pitchlab {
@@ -122,6 +123,8 @@ struct Parameters {
     std::atomic<float> humanize{0};
     std::atomic<int> toneStyle{0};
     std::atomic<float> fxMix{0}, bpm{140};
+    std::atomic<bool> noiseGate{false};
+    std::atomic<float> noiseThresholdDb{-60};
     std::atomic<bool> enabled{true}, preserveFormants{true};
 };
 
@@ -130,12 +133,14 @@ public:
     Parameters parameters;
     std::atomic<float> detectedHz{0}, targetMidi{-1}, correction{0}, inputPeak{0}, outputPeak{0};
     std::atomic<float> confidence{0};
+    std::atomic<float> noiseGateGain{1};
     std::atomic<bool> clipped{false};
     void prepare(double newRate, bool useLowLatency = false) {
         rate = newRate;
         lowLatency = useLowLatency;
         detector.prepare(rate, lowLatency);
         tone.prepare(rate);
+        inputGate.prepare(rate,parameters.noiseGate.load()); noiseGateGain=parameters.noiseGate.load()?0.f:1.f;
         if (lowLatency) {
             liveShifter = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>(42);
             const int window = std::max(384, int(std::round(rate * 0.022 / 32)) * 32);
@@ -155,6 +160,7 @@ public:
         // The fixed-block adapter adds one block to the shifter's stated delay.
         outputLimiter.prepare(rate, 0.5f, lowLatency ? 0.001 : 0.005);
         dryDelay.assign(size_t(latency + 1), 0);
+        cleanDelay.assign(size_t(latency + 1), 0);
         finalDryDelay.assign(size_t(outputLimiter.latencySamples() + 1), 0); finalDryPos = 0;
         dryPos = 0; smoothCorrection = 0; effectMix = 1; gain = 0.501187f;
         lastTarget = -1; lastKey = lastScale = lastMask = -1; midiHistory.fill(0); validHistory = historyPos = 0;
@@ -170,14 +176,18 @@ public:
         detector.setRange(parameters.voiceRange.load());
         for (int offset = 0; offset < samples; offset += quantum) {
             int n = std::min(quantum, samples - offset);
+            inputGate.configure(parameters.noiseGate.load(),parameters.noiseThresholdDb.load());
             for (int i = 0; i < n; ++i) {
                 float x = std::isfinite(input[offset + i]) ? std::clamp(input[offset + i], -1.0f, 1.0f) : 0;
-                blockIn[i] = x;
+                const float cleaned=inputGate.process(x);
+                blockIn[i] = cleaned;
                 inPeak = std::max(inPeak, std::abs(x));
-                if (detector.push(x)) updateTarget();
+                if (detector.push(blockIn[i])) updateTarget();
                 dryDelay[dryPos] = x;
+                cleanDelay[dryPos] = cleaned;
                 dryPos = (dryPos + 1) % dryDelay.size();
                 dry[offset + i] = dryDelay[dryPos];
+                cleanBlock[i] = cleanDelay[dryPos];
             }
             // Brief consonants keep the previous ratio; do not wobble back to
             // unity at every unvoiced detector frame. Long gaps ease to unity.
@@ -218,7 +228,8 @@ public:
             const float smooth = float(1.0 - std::exp(-1.0 / (rate * 0.01)));
             for (int i = 0; i < n; ++i) {
                 effectMix += smooth * (desiredMix - effectMix); gain += smooth * (desiredGain - gain);
-                float y = (tone.process(blockOut[i]) * effectMix + dry[offset + i] * (1 - effectMix)) * gain;
+                const float bypassInput=cleanBlock[i];
+                float y = (tone.process(blockOut[i]) * effectMix + bypassInput * (1 - effectMix)) * gain;
                 if (!std::isfinite(y)) y = 0;
                 if (std::abs(y) > 0.98f || std::abs(blockIn[i]) >= 0.999f) clipped = true;
                 wet[offset + i] = outputLimiter.process(y);
@@ -229,11 +240,13 @@ public:
             }
         }
         inputPeak = inPeak; outputPeak = outPeak; correction = float(smoothCorrection);
+        noiseGateGain=inputGate.currentGain();
     }
 private:
     static constexpr int quantum = 128;
     PitchDetector detector;
     VocalTone tone;
+    NoiseGate inputGate;
     std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
     std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>> liveShifter;
     bool lowLatency = false;
@@ -241,7 +254,9 @@ private:
     std::vector<float> shiftInput, shiftOutput;
     int shiftSize = 512, shiftPos = 0;
     std::array<float, quantum> blockIn{}, blockOut{};
+    std::array<float, quantum> cleanBlock{};
     std::vector<float> dryDelay;
+    std::vector<float> cleanDelay;
     std::vector<float> finalDryDelay;
     size_t finalDryPos = 0;
     std::array<double, 3> midiHistory{};

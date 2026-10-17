@@ -32,7 +32,7 @@ def render(mode, source, folder, *values):
 report, outputs = [], []
 x, rate = sf.read(args.source)
 assert x.ndim == 1 and 16000 <= rate <= 96000, 'Use a mono vocal fixture at 16–96 kHz'
-for preset in range(3, 9):
+for preset in range(3, 11):
     y, d = render('--render-live', args.source, root / f'style-{preset}', preset, 18, 140)
     assert len(y) == len(x) == len(d)
     assert np.max(np.abs(d-x)) < 4/8388608
@@ -41,7 +41,7 @@ for preset in range(3, 9):
     outputs.append(y)
     report.append(f'PASS live style {preset-2}: frames={len(y)} peak={np.max(np.abs(y)):.6f} '
                   f'RMS={np.sqrt(np.mean(y*y)):.6f}; dry unchanged')
-for i in range(6):
+for i in range(8):
     for j in range(i):
         assert np.sqrt(np.mean((outputs[i]-outputs[j])**2)) > .0001
 

@@ -11,19 +11,23 @@ struct VocalSettings {
     int style = 0;
     float fx = 0, bpm = 140, recordDb = 0;
     bool levelOnly = false;
-    static constexpr int presetCount = 9, customId = 10;
+    bool noiseGate = true;
+    float noiseThresholdDb = -60;
+    static constexpr int presetCount = 3+int(pitchlab::styleProfiles.size()), customId = presetCount+1;
     static VocalSettings capture(const pitchlab::Parameters& p) {
         VocalSettings s;
         s.key=p.key.load(); s.scale=p.scale.load(); s.mask=p.noteMask.load(); s.range=p.voiceRange.load();
         s.speed=p.retuneMs.load(); s.amount=p.amount.load(); s.humanize=p.humanize.load();
         s.formants=p.preserveFormants.load(); s.enabled=p.enabled.load();
-        s.style=p.toneStyle.load(); s.fx=p.fxMix.load(); s.bpm=p.bpm.load(); return s;
+        s.style=p.toneStyle.load(); s.fx=p.fxMix.load(); s.bpm=p.bpm.load();
+        s.noiseGate=p.noiseGate.load(); s.noiseThresholdDb=p.noiseThresholdDb.load(); return s;
     }
     void apply(pitchlab::Parameters& p) const {
         p.key = key; p.scale = scale; p.noteMask = mask; p.voiceRange = range;
         p.retuneMs = speed; p.amount = amount; p.humanize = humanize;
         p.preserveFormants = formants; p.enabled = enabled;
         p.toneStyle=style; p.fxMix=fx; p.bpm=bpm;
+        p.noiseGate=noiseGate; p.noiseThresholdDb=noiseThresholdDb;
     }
     static VocalSettings preset(int index) {
         VocalSettings s;
@@ -78,7 +82,7 @@ public:
         auto wetWriter = format.createWriterFor(wetStream, options), dryWriter = format.createWriterFor(dryStream, options);
         if (!wetWriter || !dryWriter) return juce::String::fromUTF8("WAV 저장을 시작하지 못했어요.");
         pitchlab::PitchEngine engine;
-        if(!settings.levelOnly) { engine.prepare(rate, settings.lowLatency); settings.apply(engine.parameters); }
+        if(!settings.levelOnly) { settings.apply(engine.parameters); engine.prepare(rate, settings.lowLatency); }
         pitchlab::RecordLevel level; level.setGain(settings.recordDb);
         constexpr int block = 512;
         juce::AudioBuffer<float> readBuffer(int(reader->numChannels), block);
@@ -121,7 +125,7 @@ public:
         }
         if (!wetWriter->flush() || !dryWriter->flush() || written != length) return "WAV finalisation failed";
         wetWriter.reset(); dryWriter.reset();
-        juce::String report = "PitchLab 0.4.0 offline render\nNo audio device opened. No playback.\n";
+        juce::String report = "PitchLab 0.4.1 offline render\nNo audio device opened. No playback.\n";
         report += "Sample rate: " + juce::String(rate) + "\nInput/output frames: " + juce::String(length) + "/" + juce::String(written);
         report += "\nLatency trimmed: " + juce::String(latency) + " samples\nPeak: " + juce::String(peak, 6);
         report += "\nMaximum adjacent sample change: " + juce::String(maxStep, 6);
@@ -134,6 +138,7 @@ public:
         report += "Engine: " + juce::String(settings.levelOnly ? "File gain only / no pitch processing" : settings.lowLatency ? "Live / Signalsmith short window" : "File / Rubber Band") + "\n";
         report += "Level-only (no tuning): " + juce::String(int(settings.levelOnly)) + "\nFile gain dB: " + juce::String(settings.recordDb);
         report += "\nStyle: " + juce::String(settings.style) + "\nFX mix: " + juce::String(settings.fx) + "\nBPM: " + juce::String(settings.bpm);
+        report += "\nNoise gate: " + juce::String(int(settings.noiseGate && !settings.levelOnly)) + "\nNoise threshold dBFS: " + juce::String(settings.noiseThresholdDb);
         report += "\nFile sample-peak ceiling: -1 dBFS (not LUFS/true-peak normalisation). Length preserved; effect tails after EOF are not appended.\n";
         if (!job.reportFile.replaceWithText(report)) return "Report write failed";
         return {};
