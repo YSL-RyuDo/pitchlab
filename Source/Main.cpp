@@ -57,7 +57,7 @@ struct Look : juce::LookAndFeel_V4 {
 class MainComponent : public juce::Component, private juce::Timer {
 public:
     MainComponent() {
-        setLookAndFeel(&look); setSize(1100, 940);
+        setLookAndFeel(&look); setSize(1100, 1010);
         recordings = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory().getChildFile("Recordings");
         setupButton(deviceButton, juce::String::fromUTF8("오디오 설정"));
         setupButton(startButton, juce::String::fromUTF8("마이크 시작"));
@@ -130,6 +130,18 @@ public:
         setupSlider(fx,0,100,1,0,"%",juce::String::fromUTF8("스타일 효과"));
         setupSlider(tempo,60,200,1,140," BPM",juce::String::fromUTF8("곡의 BPM"));
         setupSlider(recordGain,0,30,1,24," dB",juce::String::fromUTF8("녹음 파일 증폭"));
+        setupSlider(inputGain,0,36,1,0," dB",juce::String::fromUTF8("입력 증폭"));
+        inputGain.onValueChange=[this] { audio.pitch.parameters.inputDb=float(inputGain.getValue()); };
+        inputGain.setTooltip(juce::String::fromUTF8("음정 검출 전에 목소리를 키웁니다. 듣기와 보정 파일에 적용하고 원본 WAV는 그대로 둡니다. CLIP이 뜨면 낮추세요."));
+        setupButton(calibrateButton,juce::String::fromUTF8("마이크 음량 맞추기 · 3초"));
+        calibrateButton.setEnabled(false);
+        calibrateButton.onClick=[this] {
+            if(!running || recording || calibrating) return;
+            calibrating=true; calibrationStarted=juce::Time::getMillisecondCounterHiRes();
+            audio.pitch.calibrationState=0;
+            audio.pitch.calibrationRequest=true;
+            status=juce::String::fromUTF8("3초 동안 평소 녹음할 크기로 말하거나 노래해 주세요."); statusError=false;
+        };
         setupToggle(noiseGate,juce::String::fromUTF8("대기 잡음 줄이기"),false);
         setupSlider(noiseThreshold,-78,-36,1,-60," dB",juce::String::fromUTF8("잡음 차단 기준"));
         audio.pitch.parameters.noiseGate=false;
@@ -196,6 +208,10 @@ public:
         noiseThreshold.setValue(-66,juce::sendNotificationSync);
         preset.setSelectedId(4,juce::sendNotificationSync);
         require(audio.pitch.parameters.noiseThresholdDb.load()==-66,"preset preserves noise threshold");
+        applyInputCalibration(27);
+        require(audio.pitch.parameters.inputDb.load()==27 && recordGain.getValue()==6 && audio.monitorDb.load()==6 && !audio.monitoring.load(),"calibration sets input gain and avoids stacking old boosts or enabling monitoring");
+        preset.setSelectedId(5,juce::sendNotificationSync);
+        require(audio.pitch.parameters.inputDb.load()==27 && recordGain.getValue()==6,"style preserves calibrated input and recording gain");
     }
     void resized() override {
         preset.setBounds(489, 32, 445, 34);
@@ -209,10 +225,11 @@ public:
         diagnosticButton.setBounds(734, 727, 123, 38); deviceButton.setBounds(875, 727, 180, 38);
         folderButton.setBounds(44, 775, 146, 24); locationButton.setBounds(204, 775, 152, 24);
         for(auto* c : std::initializer_list<juce::Component*>{&startButton,&recordButton,&monitor,&fileButton,&diagnosticButton,&deviceButton,&folderButton,&locationButton})
-            c->setTopLeftPosition(c->getX(),c->getY()+100);
+            c->setTopLeftPosition(c->getX(),c->getY()+170);
         fx.setBounds(45,752,245,38); tempo.setBounds(320,752,175,38);
         recordGain.setBounds(530,752,245,38); levelButton.setBounds(815,749,240,38);
         noiseGate.setBounds(800,608,250,28); noiseThreshold.setBounds(800,641,250,34);
+        inputGain.setBounds(154,831,300,34); calibrateButton.setBounds(480,827,256,38);
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(theme::bg);
@@ -220,7 +237,7 @@ public:
         g.setColour(theme::bg);
         for (int i = 0; i < 5; ++i) { float h = float(12 + (2 - std::abs(i - 2)) * 8); g.fillRoundedRectangle(float(37 + i * 5), 48 - h / 2, 3, h, 1.5f); }
         text(g, "PitchLab", 84, 21, 215, 38, 28, theme::text, true);
-        text(g, "VOCAL TUNING / 04", 87, 60, 250, 16, 10, theme::muted, true);
+        text(g, "VOCAL TUNING / 05", 87, 60, 250, 16, 10, theme::muted, true);
         text(g, "PRESET", 423, 37, 60, 23, 10, theme::muted, true);
         text(g,juce::String::fromUTF8("스타일 참고 프리셋 · 곡의 KEY / SCALE / BPM을 맞춰 주세요"),489,68,560,18,10,theme::muted);
         g.setColour(running ? theme::accent.withAlpha(0.12f) : theme::field); g.fillRoundedRectangle(951, 32, 121, 34, 17);
@@ -269,25 +286,31 @@ public:
         text(g,"STYLE FX",48,736,240,18,10,theme::muted,true);
         text(g,"SONG BPM",323,736,170,18,10,theme::muted,true);
         text(g,juce::String::fromUTF8("녹음 크기 · 파일만 증폭"),534,736,260,18,11,theme::accent,true);
-        card(g,28,814,1044,94);
-        text(g,"IN",377,877,23,18,9,theme::muted,true); meter(g,404,883,132,displayedInput,theme::green);
-        text(g,"PHONES",551,877,44,18,9,theme::muted,true); meter(g,598,883,121,displayedOutput,theme::accent);
-        text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,873,316,25,11,recording?theme::red:theme::muted);
-        text(g,status,30,914,875,22,11,statusError?theme::red:theme::muted);
-        text(g,"STUDY 0.4.2",929,914,140,22,10,theme::muted,false,juce::Justification::right);
+        card(g,28,814,1044,60);
+        text(g,juce::String::fromUTF8("입력 증폭"),48,836,100,24,12,theme::accent,true);
+        text(g,juce::String::fromUTF8(calibrating?"평소 크기로 3초간 말해 주세요":"마이크 시작 → 음량 맞추기 → 녹음"),754,829,290,20,10,theme::muted);
+        text(g,juce::String::fromUTF8(clipFrames>0?"CLIP · 입력 증폭을 낮춰 주세요":"원본 WAV는 증폭하지 않아요"),754,850,290,18,10,clipFrames>0?theme::red:theme::muted);
+        card(g,28,884,1044,94);
+        text(g,"IN",377,947,23,18,9,theme::muted,true); meter(g,404,953,132,displayedInput,theme::green);
+        text(g,"PHONES",551,947,44,18,9,theme::muted,true); meter(g,598,953,121,displayedOutput,theme::accent);
+        text(g,recording?"REC "+timeString(audio.recorder.seconds()):running?juce::String(audio.bufferSamples.load())+" samples / DELAY "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),0)+" ms / XRUN "+juce::String(driverXruns):"WAV 24-bit / LOCAL",737,943,316,25,11,recording?theme::red:theme::muted);
+        text(g,status,30,984,875,22,11,statusError?theme::red:theme::muted);
+        text(g,"STUDY 0.5.0",929,984,140,22,10,theme::muted,false,juce::Justification::right);
     }
 
 private:
     theme::Look look;
     AudioEngine audio;
-    juce::TextButton deviceButton, startButton, recordButton, folderButton, locationButton, fileButton, diagnosticButton, levelButton;
+    juce::TextButton deviceButton, startButton, recordButton, folderButton, locationButton, fileButton, diagnosticButton, levelButton, calibrateButton;
     juce::ToggleButton monitor, bypass, formants, noiseGate;
     juce::ComboBox key, scale, preset, voice;
     VocalKeyboard keyboard;
     std::unique_ptr<OfflineRenderer> renderJob;
     int driverXruns = 0, xrunBaseline = 0;
     juce::String lastDiagnostic;
-    juce::Slider speed, amount, humanize, volume, fx, tempo, recordGain, noiseThreshold;
+    juce::Slider speed, amount, humanize, volume, fx, tempo, recordGain, noiseThreshold, inputGain;
+    bool calibrating=false;
+    double calibrationStarted=0;
     juce::TooltipWindow tooltips{this, 700};
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::DialogWindow> deviceWindow;
@@ -347,6 +370,11 @@ private:
         text(g, juce::String::fromUTF8("● 입력"), 895, 466, 66, 18, 10, theme::green); text(g, juce::String::fromUTF8("● 목표"), 972, 466, 76, 18, 10, theme::accent);
     }
     void markCustom() { if (!applyingPreset && preset.getNumItems() > 0) preset.setSelectedId(VocalSettings::customId, juce::dontSendNotification); }
+    void applyInputCalibration(float db) {
+        inputGain.setValue(std::floor(db),juce::sendNotificationSync);
+        recordGain.setValue(6,juce::sendNotificationSync); volume.setValue(6,juce::sendNotificationSync);
+        noiseGate.setToggleState(false,juce::dontSendNotification); audio.pitch.parameters.noiseGate=false;
+    }
     void applyPreset(int index) {
         applyingPreset = true;
         auto settings = VocalSettings::preset(index);
@@ -367,7 +395,7 @@ private:
     }
     juce::String diagnosticText() {
         auto* device=audio.devices.getCurrentAudioDevice();
-        juce::String result="PitchLab 0.4.2 device diagnostic\n";
+        juce::String result="PitchLab 0.5.0 device diagnostic\n";
         result+="Device: "+deviceDescription+"\nBackend: "+audio.devices.getCurrentAudioDeviceType();
         result+="\nRate: "+juce::String(audio.currentRate.load())+"\nBuffer: "+juce::String(audio.bufferSamples.load());
         result+="\nEstimated latency ms: "+juce::String(audio.totalLatencySamples.load()*1000.0/audio.currentRate.load(),2);
@@ -380,6 +408,7 @@ private:
         result+="\nMonitor gain dB: "+juce::String(audio.monitorDb.load())+"\nPost-guard monitor peak: "+juce::String(audio.monitorPeak.load(),6);
         result+="\nNoise gate enabled: "+juce::String(int(audio.pitch.parameters.noiseGate.load()))+"\nNoise threshold dBFS: "+juce::String(audio.pitch.parameters.noiseThresholdDb.load());
         result+="\nNoise gate gain: "+juce::String(audio.pitch.noiseGateGain.load(),6)+"\nInput peak: "+juce::String(audio.pitch.inputPeak.load(),6);
+        result+="\nInput gain dB: "+juce::String(audio.pitch.parameters.inputDb.load());
         result+="\nCurrent device open: "+juce::String(int(device!=nullptr))+"\nNo microphone audio included.\n";
         return result;
     }
@@ -428,6 +457,7 @@ private:
         deviceDescription = setup.inputDeviceName + juce::String::fromUTF8(" → ") + setup.outputDeviceName;
     }
     void toggleRecording() {
+        if(calibrating) { showError(juce::String::fromUTF8("음량 측정이 끝난 뒤 녹음해 주세요.")); return; }
         if (recording) { finishRecording(); return; }
         if (!running || !audio.ready.load()) { showError(juce::String::fromUTF8("먼저 마이크를 시작해 주세요.")); return; }
         auto error = audio.recorder.start(recordings, audio.currentRate.load(),float(recordGain.getValue()));
@@ -484,6 +514,21 @@ private:
                                 : juce::String::fromUTF8("오디오 장치 연결이 끊겼어요. 장치를 확인하고 다시 시작해 주세요."));
         }
         if (recording && audio.recorder.hasFailed()) finishRecording();
+        if(calibrating) {
+            const int state=audio.pitch.calibrationState.load();
+            if(!running || juce::Time::getMillisecondCounterHiRes()-calibrationStarted>6000) {
+                calibrating=false; audio.pitch.calibrationRequest=false;
+                if(running) showError(juce::String::fromUTF8("측정이 완료되지 않았어요. 마이크 입력을 확인해 주세요."));
+            } else if(state==2 || state==3) {
+                calibrating=false;
+                if(state==2) {applyInputCalibration(audio.pitch.calibratedDb.load()); statusError=false; status=juce::String::fromUTF8("입력 음량 맞춤 완료 · 입력 +")+juce::String(inputGain.getValue(),0)+juce::String::fromUTF8(" dB · 듣기/녹음 +6 dB · 녹음을 시작하세요.");}
+                else showError(juce::String::fromUTF8("목소리 입력이 너무 작아요. 마이크 장치를 확인하고 말하면서 다시 측정해 주세요."));
+            }
+        }
+        calibrateButton.setEnabled(running && !recording && !calibrating);
+        inputGain.setEnabled(!recording && !calibrating && !renderJob);
+        if(calibrating) recordButton.setEnabled(false);
+        else if(running) recordButton.setEnabled(true);
         if (!audio.monitoring.load()) monitor.setToggleState(false, juce::dontSendNotification);
         if (recording && audio.recorder.seconds() >= 3600) { finishRecording(); status = juce::String::fromUTF8("1시간 녹음을 저장했어요. 새 녹음을 시작할 수 있어요."); }
         const float hz = audio.pitch.detectedHz.load();
@@ -628,7 +673,7 @@ int runSelfTest(const juce::File& folder) {
 class PitchLabApplication : public juce::JUCEApplication {
 public:
     const juce::String getApplicationName() override { return "PitchLab"; }
-    const juce::String getApplicationVersion() override { return "0.4.2"; }
+    const juce::String getApplicationVersion() override { return "0.5.0"; }
     void initialise(const juce::String& commandLine) override {
         auto args = juce::StringArray::fromTokens(commandLine, true); args.removeEmptyStrings();
         if(args.size()>=2 && args[0]=="--render-ui") {
@@ -647,6 +692,7 @@ public:
             settings.recordDb=settings.levelOnly ? (args.size()>3?std::clamp(args[3].getFloatValue(),0.f,30.f):18.f)
                                                 : (args.size()>4?std::clamp(args[4].getFloatValue(),0.f,30.f):0.f);
             if(args.size()>5) settings.bpm=std::clamp(args[5].getFloatValue(),60.f,200.f);
+            if(args.size()>6) settings.inputDb=std::clamp(args[6].getFloatValue(),0.f,36.f);
             const auto error=OfflineRenderer::render(juce::File(args[1].unquoted()),juce::File(args[2].unquoted()),settings,job);
             if(error.isNotEmpty()) juce::File(args[2].unquoted()).getChildFile("render-error.txt").replaceWithText(error);
             setApplicationReturnValue(error.isEmpty()?0:13); quit(); return;
@@ -666,11 +712,11 @@ public:
             auto* content = new MainComponent();
             float factor = 1.0f;
             if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
-                factor = std::max(0.5f,std::min({1.0f, (display->userArea.getWidth()-60)/1100.0f, (display->userArea.getHeight()-80)/940.0f}));
+                factor = std::max(0.5f,std::min({1.0f, (display->userArea.getWidth()-60)/1100.0f, (display->userArea.getHeight()-80)/1010.0f}));
             }
             auto* host = new juce::Component(); host->addAndMakeVisible(content);
             content->setTransform(juce::AffineTransform::scale(factor));
-            host->setSize(int(std::ceil(1100*factor)),int(std::ceil(940*factor)));
+            host->setSize(int(std::ceil(1100*factor)),int(std::ceil(1010*factor)));
             scaledContent.reset(content); setContentOwned(host, true);
             setResizable(false, false); centreWithSize(getWidth(), getHeight()); setVisible(true);
         }

@@ -9,6 +9,7 @@
 #include "OutputGuard.h"
 #include "VocalTone.h"
 #include "NoiseGate.h"
+#include "InputCalibration.h"
 #include "../ThirdParty/Signalsmith/signalsmith-stretch.h"
 
 namespace pitchlab {
@@ -125,6 +126,7 @@ struct Parameters {
     std::atomic<float> fxMix{0}, bpm{140};
     std::atomic<bool> noiseGate{false};
     std::atomic<float> noiseThresholdDb{-60};
+    std::atomic<float> inputDb{0};
     std::atomic<bool> enabled{true}, preserveFormants{true};
 };
 
@@ -134,6 +136,9 @@ public:
     std::atomic<float> detectedHz{0}, targetMidi{-1}, correction{0}, inputPeak{0}, outputPeak{0};
     std::atomic<float> confidence{0};
     std::atomic<float> noiseGateGain{1};
+    std::atomic<bool> calibrationRequest{false};
+    std::atomic<int> calibrationState{0}; // 0 idle, 1 collecting, 2 ready, 3 too quiet
+    std::atomic<float> calibrationProgress{0}, calibratedDb{0};
     std::atomic<bool> clipped{false};
     void prepare(double newRate, bool useLowLatency = false) {
         rate = newRate;
@@ -141,6 +146,9 @@ public:
         detector.prepare(rate, lowLatency);
         tone.prepare(rate);
         inputGate.prepare(rate,parameters.noiseGate.load()); noiseGateGain=parameters.noiseGate.load()?0.f:1.f;
+        const float initialInputDb=parameters.inputDb.load();
+        preamp=std::pow(10.f,std::clamp(std::isfinite(initialInputDb)?initialInputDb:0.f,0.f,36.f)/20.f);
+        calibrationState=0; calibrationRequest=false; calibrationProgress=0;
         if (lowLatency) {
             liveShifter = std::make_unique<signalsmith::stretch::SignalsmithStretch<float>>(42);
             const int window = std::max(384, int(std::round(rate * 0.022 / 32)) * 32);
@@ -176,10 +184,17 @@ public:
         detector.setRange(parameters.voiceRange.load());
         for (int offset = 0; offset < samples; offset += quantum) {
             int n = std::min(quantum, samples - offset);
+            if(calibrationRequest.exchange(false)) { calibration.start(rate); calibrationState=1; calibrationProgress=0; }
+            const float requestedInputDb=parameters.inputDb.load();
+            const float requestedPreamp=std::pow(10.f,std::clamp(std::isfinite(requestedInputDb)?requestedInputDb:0.f,0.f,36.f)/20.f);
+            const float preampStep=float(1-std::exp(-1/(rate*.02)));
             inputGate.configure(parameters.noiseGate.load(),parameters.noiseThresholdDb.load());
             for (int i = 0; i < n; ++i) {
                 float x = std::isfinite(input[offset + i]) ? std::clamp(input[offset + i], -1.0f, 1.0f) : 0;
-                const float cleaned=inputGate.process(x);
+                if(calibrationState.load()==1) calibration.push(x);
+                preamp+=preampStep*(requestedPreamp-preamp);
+                if(std::abs(x*preamp)>.98f) clipped=true;
+                const float cleaned=inputGate.process(std::clamp(x*preamp,-1.f,1.f));
                 blockIn[i] = cleaned;
                 inPeak = std::max(inPeak, std::abs(x));
                 if (detector.push(blockIn[i])) updateTarget();
@@ -188,6 +203,10 @@ public:
                 dryPos = (dryPos + 1) % dryDelay.size();
                 dry[offset + i] = dryDelay[dryPos];
                 cleanBlock[i] = cleanDelay[dryPos];
+            }
+            if(calibrationState.load()==1) {
+                calibrationProgress=calibration.progress();
+                if(calibration.done()) {float db=0; const bool ok=calibration.result(db); calibratedDb=db; calibrationState=ok?2:3;}
             }
             // Brief consonants keep the previous ratio; do not wobble back to
             // unity at every unvoiced detector frame. Long gaps ease to unity.
@@ -247,6 +266,8 @@ private:
     PitchDetector detector;
     VocalTone tone;
     NoiseGate inputGate;
+    InputCalibration calibration;
+    float preamp=1;
     std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
     std::unique_ptr<signalsmith::stretch::SignalsmithStretch<float>> liveShifter;
     bool lowLatency = false;
