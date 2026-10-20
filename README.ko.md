@@ -1,6 +1,8 @@
 # PitchLab
 
-[English](README.md), [Korean](README.ko.md), [Japanese](README.ja.md)
+<!-- portfolio-languages -->
+[![English](https://ysl-ryudo.github.io/assets/diagrams/language-en.svg)](README.md) [![한국어 (현재 언어)](https://ysl-ryudo.github.io/assets/diagrams/language-ko-current.svg)](README.ko.md) [![日本語](https://ysl-ryudo.github.io/assets/diagrams/language-ja.svg)](README.ja.md)
+<!-- /portfolio-languages -->
 
 오디오 콜백과 DSP 워커를 중심으로 만든 실시간 마이크, 피치 처리 도구입니다.
 
@@ -11,15 +13,17 @@
 
 [개발 사례 보기](https://ysl-ryudo.github.io/ko/work/pitchlab/), [Portfolio](https://ysl-ryudo.github.io/ko/)
 
+## 게임에서 보는 구현
+
+[![현재 소스로 빌드한 PitchLab 실행 화면. 키와 스케일, 보정 속도, 포먼트 유지, WAV 보정을 한 화면에서 조절합니다.](https://ysl-ryudo.github.io/assets/gameplay/pitchlab-controls.webp)](https://ysl-ryudo.github.io/assets/gameplay/pitchlab-controls.webp)
+
+현재 소스로 빌드한 PitchLab 실행 화면. 키와 스케일, 보정 속도, 포먼트 유지, WAV 보정을 한 화면에서 조절합니다.
+
 ## 게임 전체에서 맡은 구현
 
-JUCE와 외부 DSP 구성 요소를 이용해 애플리케이션의 오디오 흐름과 제어 로직, UI를 만들었습니다. 목표 음 선택과 입력 보정, 게이트와 버퍼링, 녹음과 오프라인 처리를 담당했습니다. JUCE와 Signalsmith의 알고리즘은 사용한 의존성으로 구분하며 직접 발명한 알고리즘으로 소개하지 않습니다.
+JUCE와 Signalsmith DSP를 이용해 오디오 경로, 입력 보정과 게이트, 목표 음 선택, 작업자 버퍼링, 녹음과 오프라인 렌더를 구현했습니다.
 
-**플레이 흐름**
-
-오디오 장치 선택 → 입력 보정 → 모니터링과 피치 처리 → 음계와 프리셋 선택 → 녹음과 오프라인 렌더
-
-소스 링크는 확인한 버전에 고정하고 기여 링크는 제가 작성한 병합 외 변경을 가리킵니다. 공동 파일을 연결했다고 단독 작성이라는 뜻은 아닙니다. 비공개 소스는 저장소 접근 권한이 필요합니다.
+[![담당 구현 흐름](https://ysl-ryudo.github.io/assets/diagrams/pitchlab-flow-ko.svg)](https://ysl-ryudo.github.io/assets/diagrams/pitchlab-flow-ko.svg)
 
 ### 입력 보정과 신호 제어
 
@@ -39,21 +43,11 @@ JUCE와 외부 DSP 구성 요소를 이용해 애플리케이션의 오디오 �
 
 [AudioEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/AudioEngine.h), [내 변경 fe484c8](https://github.com/YSL-RyuDo/pitchlab/commit/fe484c8be966d0f91203373fd5f9eddd060ce5d0), [Recorder.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/Recorder.h), [내 변경 a8b3d93](https://github.com/YSL-RyuDo/pitchlab/commit/a8b3d93b8bba5cc75ee4124d7b143c226a4f4e50), [OfflineRenderer.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/OfflineRenderer.h), [내 변경 5bcbac3](https://github.com/YSL-RyuDo/pitchlab/commit/5bcbac396627611e5ec12c8384fdc0733d636f8c)
 
-## 내 기여
-
-전용 DSP 워커와 크기가 제한된 FIFO를 사용해 음정 분석, 처리, 녹음을 장치 콜백에서 분리했습니다.
-
-WASAPI 입력 형식 처리를 분석하고 입력 음량 보정, 출력 보호와 진단 기능을 구현했습니다.
-
-DSP, 스트리밍, 입력 보정, 잡음 게이트, WAV 출력 동작의 회귀 검사를 추가했습니다.
-
 ## 기여 근거
 
 [Audio callback / 오디오 콜백 / 音声コールバック](https://github.com/YSL-RyuDo/pitchlab/blob/5bcbac396627611e5ec12c8384fdc0733d636f8c/Source/AudioEngine.h)
 
 [Development history / 개발 이력 / 開発履歴](https://github.com/YSL-RyuDo/pitchlab/commits/main/?author=YSL-RyuDo)
-
-커밋은 설명한 변경의 근거이며 기여율 점수가 아닙니다. 외부 에셋과 팀원 작업의 크레딧은 구분합니다.
 
 ## 구현과 설계
 
@@ -62,8 +56,6 @@ DSP, 스트리밍, 입력 보정, 잡음 게이트, WAV 출력 동작의 회귀 
 DSP 워커와 bounded FIFO로 콜백에서 처리, 녹음을 분리하고 WASAPI 입력 형식을 조사했습니다. 입력 보정, 진단과 WAV 회귀 검증도 추가했습니다.
 
 ## 코드의 동작과 구현 방식을 택한 이유
-
-확인한 구현이 어떤 제약을 다루며 어떤 장단점이 생기는지 설명합니다. 설계 효과에 대한 설명은 코드 분석이며, 비교한 모든 대안을 당시 직접 구현했다는 뜻은 아닙니다. 기여 링크는 공동 프로젝트 안의 담당 변경을 가리키고 소스 링크는 기존 접근 권한을 유지합니다.
 
 ### 오디오 콜백에서 DSP 작업을 분리한 이유
 
@@ -81,7 +73,7 @@ AudioEngine은 고정 용량의 입력 및 출력 FIFO로 오디오 콜백과 DS
 
 **장단점과 검증 범위**
 
-버퍼는 실행 시점의 흔들림을 흡수하는 대신 지연을 더합니다. 오류 시 무음으로 전환하면 잘못된 데이터를 계속 출력하지 않지만 모니터링이 끊기므로 복구 경로가 필요합니다. 이 구조만으로 Windows에서 지연 수치를 보장하거나 엄격한 실시간 처리가 입증되는 것은 아닙니다.
+버퍼는 실행 시점의 흔들림을 흡수하는 대신 지연을 더합니다. 오류 시 무음으로 전환하면 잘못된 데이터의 출력을 막지만 모니터링이 끊기므로 복구 경로가 필요합니다. 장치별 지연과 출력 부족은 측정해야 합니다.
 
 [pitchlab/AudioEngine.h](https://github.com/YSL-RyuDo/pitchlab/blob/e191ed10d7d2cc8fc7dabd6192936b1ee3d4ea19/Source/AudioEngine.h)
 
@@ -101,7 +93,7 @@ PitchEngine은 주파수와 MIDI 피치를 변환하고 허용 음을 12비트 �
 
 **장단점과 검증 범위**
 
-확인한 함수에서 사용자 마스크가 비어 있으면 반올림한 음으로 돌아갑니다. 검출 신뢰도와 무성음, 전환과 청각적 왜곡은 별도 검사 대상입니다. 이 정책을 피치 변환 알고리즘 자체의 독자 개발로 소개하지 않습니다.
+사용자 마스크가 비어 있으면 반올림한 음으로 돌아갑니다. 목표 음 선택 규칙과 함께 검출 신뢰도, 무성음 입력, 음 전환과 청각적 왜곡을 다뤄야 합니다.
 
 [pitchlab/PitchEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/PitchEngine.h), [pitchlab/VocalKeyboard.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/VocalKeyboard.h)
 

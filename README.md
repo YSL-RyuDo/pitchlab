@@ -1,6 +1,8 @@
 # PitchLab
 
-[English](README.md), [Korean](README.ko.md), [Japanese](README.ja.md)
+<!-- portfolio-languages -->
+[![English (current)](https://ysl-ryudo.github.io/assets/diagrams/language-en-current.svg)](README.md) [![한국어](https://ysl-ryudo.github.io/assets/diagrams/language-ko.svg)](README.ko.md) [![日本語](https://ysl-ryudo.github.io/assets/diagrams/language-ja.svg)](README.ja.md)
+<!-- /portfolio-languages -->
 
 A real-time microphone and pitch-processing tool, built around an audio callback and DSP worker.
 
@@ -11,15 +13,17 @@ A real-time microphone and pitch-processing tool, built around an audio callback
 
 [Explore the case](https://ysl-ryudo.github.io/en/work/pitchlab/), [Portfolio](https://ysl-ryudo.github.io/en/)
 
+## Inside the game
+
+[![PitchLab running from the current source. Key, scale, retune speed, formant preservation and WAV correction share one control surface.](https://ysl-ryudo.github.io/assets/gameplay/pitchlab-controls.webp)](https://ysl-ryudo.github.io/assets/gameplay/pitchlab-controls.webp)
+
+PitchLab running from the current source. Key, scale, retune speed, formant preservation and WAV correction share one control surface.
+
 ## What I built across the game
 
-I built the application's audio flow, control logic and UI around JUCE and third-party DSP components. My contribution includes target-note selection, calibration/gating, buffering, recording and offline processing. JUCE and Signalsmith algorithms remain credited dependencies, not claimed as algorithms I invented.
+Using JUCE and Signalsmith DSP, I built audio routing, input calibration and gating, target-note selection, worker buffering, recording and offline rendering.
 
-**Player flow**
-
-Select audio devices → calibrate input → monitor and process pitch → choose notes/presets → record or render offline
-
-Source links pin the inspected revision; contribution links identify my non-merge changes. Shared-file links do not imply sole authorship. Private source requires repository access.
+[![My implementation flow](https://ysl-ryudo.github.io/assets/diagrams/pitchlab-flow-en.svg)](https://ysl-ryudo.github.io/assets/diagrams/pitchlab-flow-en.svg)
 
 ### Input calibration and signal control
 
@@ -39,21 +43,11 @@ Implemented the callback/worker buffering path, recording and file-based offline
 
 [AudioEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/AudioEngine.h), [My change fe484c8](https://github.com/YSL-RyuDo/pitchlab/commit/fe484c8be966d0f91203373fd5f9eddd060ce5d0), [Recorder.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/Recorder.h), [My change a8b3d93](https://github.com/YSL-RyuDo/pitchlab/commit/a8b3d93b8bba5cc75ee4124d7b143c226a4f4e50), [OfflineRenderer.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/OfflineRenderer.h), [My change 5bcbac3](https://github.com/YSL-RyuDo/pitchlab/commit/5bcbac396627611e5ec12c8384fdc0733d636f8c)
 
-## My contribution
-
-Separated pitch analysis/processing and recording from the device callback through a dedicated DSP worker and bounded FIFOs.
-
-Investigated WASAPI input-format handling and implemented input-level calibration, output protection and diagnostics.
-
-Added regression checks for DSP, streaming, input calibration, noise gate and WAV output behavior.
-
 ## Contribution evidence
 
 [Audio callback / 오디오 콜백 / 音声コールバック](https://github.com/YSL-RyuDo/pitchlab/blob/5bcbac396627611e5ec12c8384fdc0733d636f8c/Source/AudioEngine.h)
 
 [Development history / 개발 이력 / 開発履歴](https://github.com/YSL-RyuDo/pitchlab/commits/main/?author=YSL-RyuDo)
-
-Commits are evidence of the stated changes, not a percentage-of-authorship score. Third-party assets and teammates' work remain separately credited.
 
 ## Implementation and design
 
@@ -62,8 +56,6 @@ Microphone processing combines real-time device input with heavier pitch analysi
 I separated processing and recording from the callback with a DSP worker and bounded FIFOs, investigated WASAPI input formats, and added calibration, diagnostics and WAV regression checks.
 
 ## How the code works and why it is structured this way
-
-These notes connect the inspected implementation to the constraints it addresses and its tradeoffs. Explanations of design consequences are code analysis, not a claim that every alternative was prototyped. Contribution links identify my changes within team projects; source links retain their original access permissions.
 
 ### Audio callbacks and DSP have different deadlines
 
@@ -81,7 +73,7 @@ Doing DSP inside the callback avoids an inter-thread buffer and its delay, but p
 
 **Tradeoffs and verification**
 
-Buffering absorbs scheduling variation at the cost of latency. Faulting to silence avoids continuing with invalid data but interrupts monitoring and needs a clear recovery path. This architecture is not a measured latency claim or a hard real-time guarantee on Windows.
+Buffering absorbs scheduling variation at the cost of latency. Outputting silence on error prevents invalid samples from continuing, but interrupts monitoring and needs a recovery path. Device-specific latency and underruns need measurement.
 
 [pitchlab/AudioEngine.h](https://github.com/YSL-RyuDo/pitchlab/blob/e191ed10d7d2cc8fc7dabd6192936b1ee3d4ea19/Source/AudioEngine.h)
 
@@ -101,7 +93,7 @@ Chromatic rounding is simple but permits every semitone. Restricting targets to 
 
 **Tradeoffs and verification**
 
-An empty custom mask falls back to the rounded note in the inspected function. Detection confidence, unvoiced input, transitions and audible artifacts require separate tests. This policy does not establish original authorship of the underlying pitch-shifting algorithm.
+An empty user mask falls back to the rounded note. Detection confidence, unvoiced input, note transitions and audible artifacts require separate handling around the target-selection rule.
 
 [pitchlab/PitchEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/PitchEngine.h), [pitchlab/VocalKeyboard.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/VocalKeyboard.h)
 
