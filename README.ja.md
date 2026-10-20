@@ -1,33 +1,22 @@
-# PitchLab — Real-Time Vocal Pitch Processing
+# PitchLab
 
 [English](README.md) · [Korean](README.ko.md) · [Japanese](README.ja.md)
+
+オーディオコールバックとDSPワーカーを中心に構築したリアルタイムのマイク・ピッチ処理ツールです。
 
 **C++ · JUCE · WASAPI · DSP** · C++システム開発事例
 
 [開発事例を見る](https://ysl-ryudo.github.io/ja/work/pitchlab/) · [Portfolio](https://ysl-ryudo.github.io/ja/)
 
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab) (非公開・アクセス権が必要)
 
-マイクの音程補正、録音、オフラインWAV処理に対応するWindows C++/JUCEアプリです。
+## システム別の担当内容
 
-![PitchLab — Real-Time Vocal Pitch Processing](PREVIEW.png)
-
-## 取り組んだ課題
-
-マイク処理はリアルタイム入力とピッチ分析・補正・録音を組み合わせます。コールバックと処理ワーカー間に容量を制限した受け渡しを設けました。
-
-## 担当した実装と設計
-
-DSPワーカーと容量制限付きFIFOで処理・録音をコールバックから分離し、WASAPI入力形式を調査しました。入力校正、診断、WAV回帰検証も追加しました。
-
-### 実装概要 · 概念フロー
-
-```mermaid
-flowchart LR
-    N0["WASAPI input"] --> N1
-    N1["Bounded FIFO"] --> N2
-    N2["DSP worker"] --> N3
-    N3["Output / WAV recording"]
-```
+| 領域 | 実装 |
+|---|---|
+| デバイスコールバック | 容量制限付きFIFOで入出力を受け渡し |
+| DSPワーカー | ピッチ解析・処理・録音 |
+| 検証 | 入力補正・WASAPI形式・診断・WAV回帰確認 |
 
 ## 担当した内容
 
@@ -56,7 +45,3 @@ C++/JUCEビルドは[CMakeLists.txt](CMakeLists.txt)、デバイス・録音設�
 - [TEST-RESULTS.txt](TEST-RESULTS.txt)
 - [LIVE-VOICE-TEST-RESULTS.txt](LIVE-VOICE-TEST-RESULTS.txt)
 - [ThirdParty/JUCE-LICENSE.md](ThirdParty/JUCE-LICENSE.md)
-
-## 実装の確認方法
-
-AudioEngine.hと合成・ファイル検証記録から構造と検証方法を確認できます。あらゆる実機マイクで同じ品質を保証する結果ではありません。

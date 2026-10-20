@@ -1,33 +1,22 @@
-# PitchLab — Real-Time Vocal Pitch Processing
+# PitchLab
 
 [English](README.md) · [Korean](README.ko.md) · [Japanese](README.ja.md)
+
+오디오 콜백과 DSP 워커를 중심으로 만든 실시간 마이크·피치 처리 도구입니다.
 
 **C++ · JUCE · WASAPI · DSP** · C++ 시스템 개발 사례
 
 [개발 사례 보기](https://ysl-ryudo.github.io/ko/work/pitchlab/) · [Portfolio](https://ysl-ryudo.github.io/ko/)
 
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab) (비공개 · 접근 권한 필요)
 
-마이크 음정 보정, 녹음과 오프라인 WAV 처리를 위한 Windows C++/JUCE 앱입니다.
+## 시스템별 담당 내용
 
-![PitchLab — Real-Time Vocal Pitch Processing](PREVIEW.png)
-
-## 해결하려던 문제
-
-마이크 처리는 실시간 장치 입력과 피치 분석·보정·녹음을 함께 다룹니다. 콜백과 처리 워커 사이에 크기가 제한된 전달 구조를 두었습니다.
-
-## 내 구현과 설계
-
-DSP 워커와 bounded FIFO로 콜백에서 처리·녹음을 분리하고 WASAPI 입력 형식을 조사했습니다. 입력 보정·진단과 WAV 회귀 검증도 추가했습니다.
-
-### 구현 개요 · 개념 흐름도
-
-```mermaid
-flowchart LR
-    N0["WASAPI input"] --> N1
-    N1["Bounded FIFO"] --> N2
-    N2["DSP worker"] --> N3
-    N3["Output / WAV recording"]
-```
+| 영역 | 구현 |
+|---|---|
+| 장치 콜백 | 용량 제한 FIFO를 통한 입출력 전달 |
+| DSP 워커 | 피치 분석·처리·녹음 |
+| 검증 | 입력 보정·WASAPI 형식·진단·WAV 회귀 확인 |
 
 ## 내 기여
 
@@ -56,7 +45,3 @@ flowchart LR
 - [TEST-RESULTS.txt](TEST-RESULTS.txt)
 - [LIVE-VOICE-TEST-RESULTS.txt](LIVE-VOICE-TEST-RESULTS.txt)
 - [ThirdParty/JUCE-LICENSE.md](ThirdParty/JUCE-LICENSE.md)
-
-## 구현을 확인하는 방법
-
-AudioEngine.h와 합성·파일 기반 검증 기록에서 구조와 검증 방법을 확인할 수 있습니다. 모든 실제 마이크에서 동일한 품질을 보장하는 결과는 아닙니다.

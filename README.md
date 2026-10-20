@@ -1,33 +1,22 @@
-# PitchLab — Real-Time Vocal Pitch Processing
+# PitchLab
 
 [English](README.md) · [Korean](README.ko.md) · [Japanese](README.ja.md)
+
+A real-time microphone and pitch-processing tool, built around an audio callback and DSP worker.
 
 **C++ · JUCE · WASAPI · DSP** · Supporting engineering project
 
 [Explore the case](https://ysl-ryudo.github.io/en/work/pitchlab/) · [Portfolio](https://ysl-ryudo.github.io/en/)
 
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab) (Private · access required)
 
-A Windows C++/JUCE application for microphone pitch correction, recording and offline WAV processing.
+## System responsibilities
 
-![PitchLab — Real-Time Vocal Pitch Processing](PREVIEW.png)
-
-## The engineering problem
-
-Microphone processing combines real-time device input with heavier pitch analysis, correction and recording. The callback and processing worker need a bounded handoff.
-
-## My implementation
-
-I separated processing and recording from the callback with a DSP worker and bounded FIFOs, investigated WASAPI input formats, and added calibration, diagnostics and WAV regression checks.
-
-### Implementation overview · conceptual flow
-
-```mermaid
-flowchart LR
-    N0["WASAPI input"] --> N1
-    N1["Bounded FIFO"] --> N2
-    N2["DSP worker"] --> N3
-    N3["Output / WAV recording"]
-```
+| Area | Implementation |
+|---|---|
+| Device callback | Input/output handoff with bounded FIFOs |
+| DSP worker | Pitch analysis, processing and recording |
+| Validation | Input calibration, WASAPI formats, diagnostics and WAV regression checks |
 
 ## My contribution
 
@@ -56,7 +45,3 @@ A supporting C++ engineering project, not a game-server benchmark. Recorded synt
 - [TEST-RESULTS.txt](TEST-RESULTS.txt)
 - [LIVE-VOICE-TEST-RESULTS.txt](LIVE-VOICE-TEST-RESULTS.txt)
 - [ThirdParty/JUCE-LICENSE.md](ThirdParty/JUCE-LICENSE.md)
-
-## How to evaluate the work
-
-Inspect AudioEngine.h and the recorded synthetic/file checks. They demonstrate a validation approach, not uniform quality across every physical microphone.
