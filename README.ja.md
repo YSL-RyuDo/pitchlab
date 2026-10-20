@@ -11,6 +11,34 @@
 
 [開発事例を見る](https://ysl-ryudo.github.io/ja/work/pitchlab/), [Portfolio](https://ysl-ryudo.github.io/ja/)
 
+## ゲーム全体で担当した実装
+
+JUCEと外部DSPを利用し、アプリの音声フロー・制御・UIを制作しました。目標音選択、入力調整、ゲート・バッファリング、録音・オフライン処理を担当しました。JUCEとSignalsmithのアルゴリズムは依存ライブラリとして明示し、自作とはしません。
+
+**プレイの流れ**
+
+音声デバイス選択 → 入力調整 → モニターとピッチ処理 → 音階・プリセット → 録音・オフライン処理
+
+ソースリンクは確認した版に固定し、担当リンクは自分のマージ以外の変更を示します。共同ファイルは単独著作を意味しません。非公開ソースには閲覧権限が必要です。
+
+### 入力調整と信号制御
+
+入力調整、ノイズゲート、録音レベル、出力保護を実装しました。ピッチ変換ライブラリの呼出しに加え、その前後の信号を扱うマイクアプリの流れを構築しました。
+
+[InputCalibration.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/InputCalibration.h), [担当変更 5bcbac3](https://github.com/YSL-RyuDo/pitchlab/commit/5bcbac396627611e5ec12c8384fdc0733d636f8c), [NoiseGate.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/NoiseGate.h), [担当変更 ecaf34c](https://github.com/YSL-RyuDo/pitchlab/commit/ecaf34c27b0b65439bd64ca7b47dad27d001ac0b)
+
+### 目標ピッチと音選択
+
+検出ピッチ、MIDI変換、許可音マスク、近傍音選択による目標音ロジックを実装しました。ボーカル鍵盤で利用者が音を選べます。ピッチ変換自体には組み込んだDSP依存を利用します。
+
+[PitchEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/PitchEngine.h), [担当変更 5bcbac3](https://github.com/YSL-RyuDo/pitchlab/commit/5bcbac396627611e5ec12c8384fdc0733d636f8c), [VocalKeyboard.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/VocalKeyboard.h), [担当変更 f37751d](https://github.com/YSL-RyuDo/pitchlab/commit/f37751d1d22e348f90ad6a1ef9437526ff157709)
+
+### ストリーミング、録音とオフライン処理
+
+コールバックとワーカー間のバッファ、録音、ファイルのオフライン処理を実装しました。ライブモニターは音声期限を守る必要があり、オフライン処理はそのコールバック外で実行できます。バッファの遅延・同期コストは後述します。
+
+[AudioEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/AudioEngine.h), [担当変更 fe484c8](https://github.com/YSL-RyuDo/pitchlab/commit/fe484c8be966d0f91203373fd5f9eddd060ce5d0), [Recorder.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/Recorder.h), [担当変更 a8b3d93](https://github.com/YSL-RyuDo/pitchlab/commit/a8b3d93b8bba5cc75ee4124d7b143c226a4f4e50), [OfflineRenderer.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/OfflineRenderer.h), [担当変更 5bcbac3](https://github.com/YSL-RyuDo/pitchlab/commit/5bcbac396627611e5ec12c8384fdc0733d636f8c)
+
 ## 担当した内容
 
 専用DSPワーカーと容量制限付きFIFOで、音程解析・処理・録音をデバイスコールバックから分離しました。
@@ -32,12 +60,6 @@ DSP、ストリーミング、入力調整、ノイズゲート、WAV出力の�
 マイク処理はリアルタイム入力とピッチ分析・補正・録音を組み合わせます。コールバックと処理ワーカー間に容量を制限した受け渡しを設けました。
 
 DSPワーカーと容量制限付きFIFOで処理・録音をコールバックから分離し、WASAPI入力形式を調査しました。入力校正、診断、WAV回帰検証も追加しました。
-
-| 領域 | 実装 |
-|---|---|
-| デバイスコールバック | 容量制限付きFIFOで入出力を受け渡し |
-| DSPワーカー | ピッチ解析・処理・録音 |
-| 検証 | 入力補正・WASAPI形式・診断・WAV回帰確認 |
 
 ## コードの動作と実装構造の理由
 
@@ -62,6 +84,26 @@ AudioEngineは固定容量の入出力FIFOでオーディオコールバック�
 バッファはスケジューリングの揺れを吸収する代わりに遅延を増やします。異常時の無音化は不正データの継続出力を防ぎますが、モニターを中断するため復帰経路が必要です。構造だけでWindows上の実測遅延やハードリアルタイム性を保証するものではありません。
 
 [pitchlab/AudioEngine.h](https://github.com/YSL-RyuDo/pitchlab/blob/e191ed10d7d2cc8fc7dabd6192936b1ee3d4ea19/Source/AudioEngine.h)
+
+### ピッチ補正の目標音選択
+
+**実装の流れ**
+
+PitchEngineは周波数とMIDIを変換し、許可音を12ビットマスクで表し、近傍から最も近い許可音を探します。利用者は音階やボーカル鍵盤で許可音を変えられます。変換段には統合DSPライブラリを使います。
+
+**この構造が必要な理由**
+
+固定半音シフトと音階への補正は別の処理です。目標選択を純粋関数にするとマイクI/Oから方針を分離し、デバイスなしで境界条件を検査できます。
+
+**代案と現在の実装の折合い**
+
+半音丸めは単純ですが全半音を許可します。音階制限や任意マスクで音楽的制御ができます。最近傍方針は説明しやすい一方、音境界での揺れを抑える時間方向の処理も必要です。
+
+**利点・代償と検証範囲**
+
+確認関数では空マスクは丸めた音へ戻ります。検出信頼度、無声音、遷移、聴感上の歪みは別の検証対象です。この方針は基礎ピッチ変換アルゴリズムの独自開発を意味しません。
+
+[pitchlab/PitchEngine.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/PitchEngine.h), [pitchlab/VocalKeyboard.h (main)](https://github.com/YSL-RyuDo/pitchlab/blob/603505b89cb8b0e39274f671aa515051acebd6e8/Source/VocalKeyboard.h)
 
 ## 実行・コードの確認
 
