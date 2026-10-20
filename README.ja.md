@@ -119,4 +119,4 @@ C++/JUCEビルドは[CMakeLists.txt](CMakeLists.txt)、デバイス・録音設�
 
 ## 関連リポジトリ
 
-[pitchlab](https://github.com/YSL-RyuDo/pitchlab), 非公開・アクセス権が必要
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab), 公開リポジトリ

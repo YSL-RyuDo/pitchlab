@@ -117,4 +117,4 @@ A supporting C++ engineering project, not a game-server benchmark. Recorded synt
 
 ## Related repositories
 
-[pitchlab](https://github.com/YSL-RyuDo/pitchlab), Private, access required
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab), Public repository

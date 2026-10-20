@@ -117,4 +117,4 @@ PitchEngine은 주파수와 MIDI 피치를 변환하고 허용 음을 12비트 �
 
 ## 관련 저장소
 
-[pitchlab](https://github.com/YSL-RyuDo/pitchlab), 비공개, 접근 권한 필요
+[pitchlab](https://github.com/YSL-RyuDo/pitchlab), 공개 저장소
