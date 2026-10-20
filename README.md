@@ -39,6 +39,30 @@ I separated processing and recording from the callback with a DSP worker and bou
 | DSP worker | Pitch analysis, processing and recording |
 | Validation | Input calibration, WASAPI formats, diagnostics and WAV regression checks |
 
+## How the code works and why it is structured this way
+
+These notes connect the inspected implementation to the constraints it addresses and its tradeoffs. Explanations of design consequences are code analysis, not a claim that every alternative was prototyped. Contribution links identify my changes within team projects; source links retain their original access permissions.
+
+### Audio callbacks and DSP have different deadlines
+
+**Implementation**
+
+AudioEngine moves samples through fixed-capacity input/output FIFOs between the audio callback and a DSP worker. The callback validates input, transfers samples and writes available output. Overflow, underrun or non-finite data marks a stream fault and disables monitoring output.
+
+**Design rationale**
+
+The device needs output on a recurring deadline; pitch processing can have variable work. Separating them limits what the callback must do and makes buffer exhaustion an explicit state rather than silently returning invalid audio. Fixed capacity also makes memory use and overflow behavior visible.
+
+**Alternatives and the current tradeoff**
+
+Doing DSP inside the callback avoids an inter-thread buffer and its delay, but puts variable processing work on the audio deadline. The separate worker introduces buffering and synchronization while narrowing callback work. The useful choice depends on measured processing time and underruns, not on thread count alone.
+
+**Tradeoffs and verification**
+
+Buffering absorbs scheduling variation at the cost of latency. Faulting to silence avoids continuing with invalid data but interrupts monitoring and needs a clear recovery path. This architecture is not a measured latency claim or a hard real-time guarantee on Windows.
+
+[pitchlab/AudioEngine.h](https://github.com/YSL-RyuDo/pitchlab/blob/e191ed10d7d2cc8fc7dabd6192936b1ee3d4ea19/Source/AudioEngine.h)
+
 ## Open and inspect
 
 Use [CMakeLists.txt](CMakeLists.txt) for the C++/JUCE build and the existing development reference for device and recording setup.
